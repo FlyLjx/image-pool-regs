@@ -251,9 +251,17 @@ class OutlookMailboxPool:
         return self.import_payload(text)
 
     @staticmethod
-    def _alias(email: str, split_index: int) -> str:
+    def _alias(email: str, tag: str) -> str:
         local, domain = str(email).rsplit("@", 1)
-        return f"{local}+gpt{split_index}@{domain}"
+        return f"{local}+{tag}@{domain}"
+
+    @staticmethod
+    def _random_alias_tag(existing: set[str]) -> str:
+        for _ in range(20):
+            tag = uuid.uuid4().hex[:12]
+            if tag not in existing:
+                return tag
+        raise RuntimeError("Outlook 随机分裂标签生成失败")
 
     def acquire(self, split_limit: int = 5) -> dict[str, Any]:
         limit = max(1, min(50, int(split_limit or 5)))
@@ -274,15 +282,34 @@ class OutlookMailboxPool:
             chosen, split_index = min(candidates, key=lambda candidate: str(candidate[0].get("last_leased_at") or ""))
             lease_id = uuid.uuid4().hex
             leases = chosen.get("split_leases") if isinstance(chosen.get("split_leases"), dict) else {}
+            lease_aliases = (
+                chosen.get("split_lease_aliases")
+                if isinstance(chosen.get("split_lease_aliases"), dict)
+                else {}
+            )
+            used_aliases = (
+                chosen.get("used_split_aliases")
+                if isinstance(chosen.get("used_split_aliases"), dict)
+                else {}
+            )
+            existing_aliases = {
+                str(value).strip().lower()
+                for value in (*lease_aliases.values(), *used_aliases.values())
+                if str(value).strip()
+            }
+            split_alias = self._random_alias_tag(existing_aliases)
             leases[lease_id] = split_index
+            lease_aliases[lease_id] = split_alias
             chosen["split_leases"] = leases
+            chosen["split_lease_aliases"] = lease_aliases
             chosen["last_leased_at"] = _now()
             chosen["updated_at"] = _now()
             self._write_unlocked(entries)
             assigned = copy.deepcopy(chosen)
             assigned["lease_id"] = lease_id
             assigned["split_index"] = split_index
-            assigned["registered_email"] = self._alias(str(chosen["email"]), split_index)
+            assigned["split_alias"] = split_alias
+            assigned["registered_email"] = self._alias(str(chosen["email"]), split_alias)
             return assigned
 
     def find(self, email: str) -> dict[str, Any]:
@@ -306,15 +333,30 @@ class OutlookMailboxPool:
                 leases = item.get("split_leases") if isinstance(item.get("split_leases"), dict) else {}
                 if lease_id and lease_id not in leases:
                     return
+                lease_aliases = (
+                    item.get("split_lease_aliases")
+                    if isinstance(item.get("split_lease_aliases"), dict)
+                    else {}
+                )
                 split_index = int(leases.pop(lease_id, mailbox.get("split_index") or 0) or 0)
+                split_alias = str(lease_aliases.pop(lease_id, mailbox.get("split_alias") or "") or "").strip()
                 if used and split_index:
                     used_slots = {int(value) for value in item.get("used_split_slots", []) if str(value).isdigit()}
                     used_slots.add(split_index)
                     item["used_split_slots"] = sorted(used_slots)
+                    if split_alias:
+                        used_aliases = (
+                            item.get("used_split_aliases")
+                            if isinstance(item.get("used_split_aliases"), dict)
+                            else {}
+                        )
+                        used_aliases[str(split_index)] = split_alias
+                        item["used_split_aliases"] = used_aliases
                     split_limit = max(1, int(mailbox.get("split_limit") or 5))
                     if len(used_slots) >= split_limit:
                         item["status"] = "used"
                 item["split_leases"] = leases
+                item["split_lease_aliases"] = lease_aliases
                 item["last_error"] = str(error or "")[:500]
                 item["updated_at"] = _now()
                 self._write_unlocked(entries)
@@ -333,6 +375,7 @@ class OutlookMailboxPool:
                 item["last_error"] = str(error or "")[:500]
                 item["updated_at"] = _now()
                 item["split_leases"] = {}
+                item["split_lease_aliases"] = {}
                 self._write_unlocked(entries)
                 return
 
@@ -378,6 +421,7 @@ class OutlookMailClient:
             "id": str(record["id"]),
             "lease_id": str(record.get("lease_id") or ""),
             "split_index": int(record.get("split_index") or 0),
+            "split_alias": str(record.get("split_alias") or ""),
             "split_limit": int(record.get("split_limit") or 5),
             "client_id": str(record["client_id"]),
             "refresh_token": str(record["refresh_token"]),

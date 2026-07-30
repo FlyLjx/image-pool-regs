@@ -22,6 +22,14 @@ python -m venv .venv
 
 访问 `http://127.0.0.1:8090`。
 
+云服务器 Docker 部署：
+
+```bash
+REG_DATA_DIR_HOST=/opt/image-pool-regs-data docker compose up -d --build
+```
+
+Compose 默认将服务发布到 `8090`，注册与云端请求均直连，并同时启动 FlareSolverr 容器作为 Cloudflare 异常兜底。GitHub Actions 的 `Deploy` 工作流需要配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`，可选配置 `DEPLOY_PORT` 和 `DEPLOY_PATH`。
+
 首次启动账号：
 
 ```text
@@ -36,7 +44,7 @@ python -m venv .venv
 登录后在「系统设置」填写：
 
 - YYDS Mail API 地址和 API Key
-- Outlook 邮箱池：每行 `邮箱----密码----Client ID----Refresh Token`，默认将每个基础邮箱分裂为 5 个 `+gptN` 注册地址；验证码统一从该 Outlook 收件箱经 Microsoft Graph 读取，刷新后的 Refresh Token 会写回 `data/outlook_mailboxes.json`
+- Outlook 邮箱池：每行 `邮箱----密码----Client ID----Refresh Token`，默认将每个基础邮箱分裂为 5 个带 12 位随机标签的注册地址；验证码统一从该 Outlook 收件箱读取，刷新后的 Refresh Token 和分裂标签会写回 `data/outlook_mailboxes.json`
 - 邮箱域名池，默认在 `team.edu.yccc.me` 与 `auto` 中逐次随机选择
 - 代理地址（可留空）
 - Chrome/Windows 或 Safari/macOS 指纹

@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          command_timeout: 15m
+          script: |
+            set -eu
+            DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "$DEPLOY_DIR" ]; then DEPLOY_DIR=/opt/image-pool-regs; fi
+            DATA_DIR="${DEPLOY_DIR}-data"
+
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              git clone https://github.com/FlyLjx/image-pool-regs.git "$DEPLOY_DIR"
+            fi
+
+            cd "$DEPLOY_DIR"
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+
+            mkdir -p "$DATA_DIR"
+            if [ ! -f "$DATA_DIR/accounts.json" ]; then
+              cp -n data/*.json "$DATA_DIR"/
+            fi
+
+            REG_DATA_DIR_HOST="$DATA_DIR" docker compose up -d --build --remove-orphans
+            docker inspect --format='{{json .State.Health}}' image-pool-regs

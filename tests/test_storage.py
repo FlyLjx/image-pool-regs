@@ -43,3 +43,16 @@ def test_settings_removes_legacy_codex_and_sub2api_sections(tmp_path):
     persisted = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
     assert "codex_agent" not in persisted
     assert "sub2api" not in persisted
+
+
+def test_cloud_deployment_forces_direct_network_and_container_flaresolverr(tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_FORCE_DIRECT", "1")
+    monkeypatch.setenv("REG_FLARESOLVERR_URL", "http://flaresolverr:8191")
+    store = JsonStore(tmp_path)
+    settings = store.settings()
+
+    assert settings["registration"]["proxy"] == ""
+    assert settings["cloud"]["use_proxy"] is False
+    assert settings["flaresolverr"]["enabled"] is True
+    assert settings["flaresolverr"]["url"] == "http://flaresolverr:8191"
+    assert settings["flaresolverr"]["pass_proxy"] is False

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import re
+
 from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
 from app.registration.mail import extract_otp
 
@@ -19,16 +22,16 @@ def test_outlook_pool_splits_one_mailbox_into_five_registration_addresses(tmp_pa
         mailbox["split_limit"] = 5
         pool.release(mailbox, used=True)
 
-    assert assigned == [
-        "owner+gpt1@outlook.com",
-        "owner+gpt2@outlook.com",
-        "owner+gpt3@outlook.com",
-        "owner+gpt4@outlook.com",
-        "owner+gpt5@outlook.com",
-    ]
+    assert len(set(assigned)) == 5
+    assert all(re.fullmatch(r"owner\+[0-9a-f]{12}@outlook\.com", value) for value in assigned)
+    assert all("+gpt" not in value for value in assigned)
     summary = pool.summary(5)
     assert summary["available_slots"] == 0
     assert summary["used"] == 1
+    stored = json.loads((tmp_path / "outlook_mailboxes.json").read_text(encoding="utf-8"))[0]
+    assert set(stored["used_split_aliases"].values()) == {
+        value.split("+", 1)[1].split("@", 1)[0] for value in assigned
+    }
 
 
 def test_outlook_client_resolves_a_split_address_back_to_its_base_mailbox(tmp_path):
@@ -39,7 +42,8 @@ def test_outlook_client_resolves_a_split_address_back_to_its_base_mailbox(tmp_pa
     client = OutlookMailClient(path, split_limit=5)
     try:
         mailbox = client.create_mailbox()
-        assert mailbox["address"] == "owner+gpt1@outlook.com"
+        assert re.fullmatch(r"owner\+[0-9a-f]{12}@outlook\.com", mailbox["address"])
+        assert mailbox["split_alias"] in mailbox["address"]
         resolved = client.existing_mailbox(mailbox["address"])
         assert resolved["base_address"] == "owner@outlook.com"
     finally:
@@ -144,7 +148,7 @@ def test_outlook_prefers_graph_when_token_has_graph_and_imap_scopes():
 def test_outlook_imap_message_parser_extracts_openai_otp():
     raw = (
         b"From: OpenAI <noreply@example.test>\r\n"
-        b"To: owner+gpt1@outlook.com\r\n"
+        b"To: owner+a91f5c20d84e@outlook.com\r\n"
         b"Subject: Your verification code is 483921\r\n"
         b"Date: Thu, 30 Jul 2026 10:00:00 +0800\r\n"
         b"Content-Type: text/plain; charset=utf-8\r\n\r\n"

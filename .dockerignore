@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.runtime
+.pytest_cache
+.pytest-tmp*
+GPT-REG-TOOLS-8098
+__pycache__
+*.py[cod]
+*.egg-info
+*.log
+data/*
+!data/*.json
+tests

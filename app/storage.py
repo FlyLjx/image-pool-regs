@@ -162,6 +162,14 @@ class JsonStore:
                 openai = providers.get("openai")
                 registration["providers"] = {"openai": openai if isinstance(openai, dict) else {}}
         merged = deep_merge(DEFAULT_SETTINGS, sanitized)
+        if str(os.getenv("REG_FORCE_DIRECT") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            merged["registration"]["proxy"] = ""
+            merged["cloud"]["use_proxy"] = False
+            merged["flaresolverr"]["pass_proxy"] = False
+        flaresolverr_url = str(os.getenv("REG_FLARESOLVERR_URL") or "").strip().rstrip("/")
+        if flaresolverr_url:
+            merged["flaresolverr"]["enabled"] = True
+            merged["flaresolverr"]["url"] = flaresolverr_url
         if merged != raw:
             self.write("settings.json", merged)
         return merged

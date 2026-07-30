@@ -1,0 +1,25 @@
+services:
+  registrar:
+    build:
+      context: .
+    image: image-pool-regs:latest
+    container_name: image-pool-regs
+    restart: unless-stopped
+    depends_on:
+      - flaresolverr
+    ports:
+      - ${REG_PORT:-8090}:8090
+    environment:
+      REG_DATA_DIR: /app/data
+      REG_FORCE_DIRECT: "1"
+      REG_FLARESOLVERR_URL: http://flaresolverr:8191
+    volumes:
+      - ${REG_DATA_DIR_HOST:-./data}:/app/data
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: image-pool-regs-flaresolverr
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+      TZ: Asia/Shanghai
