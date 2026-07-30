@@ -1,0 +1,65 @@
+{
+  "registration": {
+    "count": 5,
+    "concurrency": 1,
+    "provider": "openai",
+    "channel": "protocol",
+    "providers": {
+      "openai": {
+        "count": 5,
+        "concurrency": 1
+      }
+    },
+    "proxy": "http://127.0.0.1:7897",
+    "browser_profile": "chrome_windows",
+    "browser_engine": "camoufox",
+    "browser_headless": false,
+    "browser_slow_mo_ms": 40,
+    "request_timeout": 45.0,
+    "mail_wait_timeout": 120.0,
+    "mail_poll_interval": 3.0
+  },
+  "mail": {
+    "provider": "outlook",
+    "api_base": "https://maliapi.215.im/v1",
+    "api_key": "AC-a8a962ec423a15608ee112bf",
+    "domains": [
+      "mail.yccc.site"
+    ],
+    "email_prefix": "",
+    "outlook_split_limit": 10
+  },
+  "cloud": {
+    "enabled": true,
+    "server": "https://free-api.yccc.me",
+    "auth_key": "YCCC-5K8fJ7dL2nQ9p36feregqqf6521R6tW1zX3cV4bN7mY2aE",
+    "use_capacity": true,
+    "capacity_limit": 60,
+    "upload_accounts": true,
+    "use_proxy": true,
+    "monitor_enabled": true,
+    "monitor_interval_seconds": 5,
+    "monitor_concurrency": 2,
+    "shortage_confirmations": 2,
+    "monitor_batch_limit": 20
+  },
+  "flaresolverr": {
+    "enabled": true,
+    "url": "http://127.0.0.1:8192",
+    "max_timeout_ms": 60000,
+    "pass_proxy": true
+  },
+  "sentinel": {
+    "so_enabled": true,
+    "so_required": true,
+    "node": "node",
+    "timeout_ms": 75000
+  },
+  "health": {
+    "auto_check_enabled": false,
+    "interval_seconds": 300,
+    "concurrency": 50,
+    "recovery_concurrency": 20,
+    "request_timeout": 30.0
+  }
+}

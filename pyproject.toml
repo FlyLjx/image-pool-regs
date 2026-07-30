@@ -1,0 +1,31 @@
+[project]
+name = "gpt-reg-tools"
+version = "0.1.0"
+description = "Local ChatGPT protocol and browser registration console with JSON persistence"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "camoufox[geoip]>=0.4.0",
+    "cryptography>=45.0.0",
+    "curl-cffi>=0.15.0",
+    "fastapi>=0.116.0",
+    "playwright>=1.53.0",
+    "uvicorn>=0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=8.4.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --basetemp=.pytest-tmp"

@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.pytest-tmp*/
+.tmp/
+.venv/
+.runtime/
+GPT-REG-TOOLS-8098/
+data/*
+!data/*.json
+logs/
+*.log

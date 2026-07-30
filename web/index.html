@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#ffffff">
+  <title>AIπ 自动注册</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.35.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="/styles.css?v=20260730-2">
+</head>
+<body>
+  <div id="boot" class="boot-screen" aria-live="polite">
+    <span class="spinner"></span>
+    <span>正在载入</span>
+  </div>
+
+  <main id="loginView" class="auth-shell" hidden>
+    <section class="auth-panel" aria-labelledby="loginTitle">
+      <header class="auth-brand">
+        <span class="brand-mark">π</span>
+        <div>
+          <strong>AIπ</strong>
+          <span>自动注册控制台</span>
+        </div>
+      </header>
+      <form id="loginForm" class="auth-form">
+        <div class="auth-heading">
+          <span>WELCOME BACK</span>
+          <h1 id="loginTitle">管理员登录</h1>
+        </div>
+        <label class="field">
+          <span>用户名</span>
+          <span class="input-wrap"><i class="ti ti-user"></i><input id="loginUsername" name="username" autocomplete="username" value="admin" required></span>
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <span class="input-wrap"><i class="ti ti-lock"></i><input id="loginPassword" name="password" type="password" autocomplete="current-password" required></span>
+        </label>
+        <p id="loginError" class="form-error" hidden></p>
+        <button id="loginButton" class="button primary wide" type="submit">
+          <i class="ti ti-login-2"></i><span>登录</span>
+        </button>
+      </form>
+      <footer class="auth-footer"><span class="status-dot"></span>LOCAL CONSOLE</footer>
+    </section>
+  </main>
+
+  <div id="appView" class="app-shell" hidden>
+    <header class="topbar">
+      <a class="top-brand" href="#register" data-nav="register" aria-label="AIπ 自动注册">
+        <span class="brand-mark compact">π</span>
+        <span><strong>AIπ</strong><small>注册工具</small></span>
+      </a>
+      <div class="top-status">
+        <span id="topJobBadge" class="status-badge neutral"><i class="ti ti-circle-dot"></i>空闲</span>
+        <button id="accountButton" class="account-trigger" type="button" title="当前用户">
+          <span id="accountInitial">A</span>
+          <span><strong id="accountName">admin</strong><small>管理员</small></span>
+        </button>
+        <button id="logoutButton" class="icon-button" type="button" title="退出登录" aria-label="退出登录"><i class="ti ti-logout"></i></button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav class="side-nav" aria-label="主导航">
+        <button class="nav-item active" type="button" data-page="register"><i class="ti ti-user-plus"></i><span>注册任务</span></button>
+        <button class="nav-item" type="button" data-page="accounts"><i class="ti ti-database"></i><span>账号数据</span><em id="sideAccountCount">0</em></button>
+        <button class="nav-item" type="button" data-page="outlook-pool"><i class="ti ti-brand-windows"></i><span>Outlook 号池</span><em id="sideOutlookSlotCount">0</em></button>
+        <button class="nav-item" type="button" data-page="settings"><i class="ti ti-settings"></i><span>系统设置</span></button>
+      </nav>
+      <div class="sidebar-meta">
+        <span class="status-dot"></span>
+        <div><strong>服务正常</strong><small>JSON 持久化</small></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <section id="page-register" class="page active">
+        <header class="page-header">
+          <div><span class="page-kicker">REGISTRATION</span><h1>自动注册</h1></div>
+          <button id="refreshButton" class="button secondary" type="button"><i class="ti ti-refresh"></i><span>刷新</span></button>
+        </header>
+
+        <div class="stats-grid">
+          <article class="stat-block green"><span><i class="ti ti-users"></i>账号总数</span><strong id="statTotal">0</strong><small>已保存</small></article>
+          <article class="stat-block blue"><span><i class="ti ti-calendar-check"></i>今日新增</span><strong id="statToday">0</strong><small>UTC</small></article>
+          <article class="stat-block amber"><span><i class="ti ti-loader"></i>当前进度</span><strong id="statProgress">0 / 0</strong><small id="statProgressMeta">等待任务</small></article>
+          <article class="stat-block red"><span><i class="ti ti-alert-circle"></i>本批失败</span><strong id="statFailed">0</strong><small>最近批次</small></article>
+        </div>
+
+        <div class="register-layout">
+          <div class="registration-task-stack" style="display: grid; gap: 12px;">
+            <section class="panel task-panel" data-provider-panel="openai">
+              <header class="panel-head"><div><i class="ti ti-brand-openai"></i><span><strong>ChatGPT 注册</strong><small id="openaiJobMeta">ChatGPT · 协议模式 · 等待任务</small></span></div><span id="openaiJobState" class="status-badge neutral">空闲</span></header>
+              <fieldset id="openaiChannelSwitch" class="channel-switch">
+                <legend>注册渠道</legend>
+                <label><input type="radio" name="registrationChannel" value="protocol" checked><span><i class="ti ti-api"></i>协议</span></label>
+                <label><input type="radio" name="registrationChannel" value="browser"><span><i class="ti ti-brand-chrome"></i>浏览器</span></label>
+              </fieldset>
+              <div class="task-controls">
+                <label class="field"><span>注册数量</span><span class="input-wrap"><i class="ti ti-hash"></i><input id="openaiRunCount" type="number" min="1" max="100" value="1"></span></label>
+                <label class="field"><span>并发数</span><span class="input-wrap"><i class="ti ti-arrows-split-2"></i><input id="openaiRunConcurrency" type="number" min="1" max="50" value="1"></span></label>
+              </div>
+              <div class="progress-group">
+                <div class="progress-label"><span>任务进度</span><strong id="openaiProgressPercent">0%</strong></div>
+                <div class="progress-track"><span id="openaiProgressBar"></span></div>
+                <div class="progress-meta">
+                  <span><i class="ti ti-check"></i>成功 <strong id="openaiProgressSuccess">0</strong></span>
+                  <span><i class="ti ti-x"></i>失败 <strong id="openaiProgressFailed">0</strong></span>
+                  <span><i class="ti ti-clock"></i><strong id="openaiProgressElapsed">00:00</strong></span>
+                </div>
+              </div>
+              <div class="monitor-strip">
+                <span class="monitor-icon"><i class="ti ti-radar"></i></span>
+                <span><strong>OpenAI 自动监听</strong><small id="monitorMeta">等待状态</small></span>
+                <em id="monitorState">未开启</em>
+              </div>
+              <div class="task-actions">
+                <button id="openaiStartButton" class="button primary" type="button" data-start-provider="openai"><i class="ti ti-player-play"></i><span>开始注册</span></button>
+                <button id="openaiStopButton" class="button danger" type="button" data-stop-provider="openai" disabled><i class="ti ti-player-stop"></i><span>停止任务</span></button>
+                <button id="monitorButton" class="button secondary" type="button"><i class="ti ti-radar"></i><span>开启监听</span></button>
+              </div>
+            </section>
+
+          </div>
+
+          <div class="registration-log-stack">
+            <section class="panel log-panel openai-log-panel">
+              <header class="panel-head"><div><i class="ti ti-brand-openai"></i><span><strong>ChatGPT 日志</strong><small id="openaiLogCount">0 条</small></span></div><button class="icon-button" type="button" data-clear-logs="openai" title="清空 ChatGPT 日志显示" aria-label="清空 ChatGPT 日志显示"><i class="ti ti-trash"></i></button></header>
+              <div id="openaiLogList" class="log-list"><div class="log-empty"><i class="ti ti-terminal"></i><span>等待 ChatGPT 任务</span></div></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-accounts" class="page">
+        <header class="page-header">
+          <div><span class="page-kicker">ACCOUNT DATA</span><h1>账号数据</h1></div>
+          <div class="header-actions">
+            <button id="reloadAccountsButton" class="button secondary" type="button"><i class="ti ti-refresh"></i><span>刷新</span></button>
+            <button id="healthCheckAllButton" class="button secondary" type="button"><i class="ti ti-heartbeat"></i><span>检测全部</span></button>
+            <button id="healthStopButton" class="button danger" type="button" hidden><i class="ti ti-player-stop"></i><span>停止检测/恢复</span></button>
+            <button id="exportAccountsButton" class="button primary" type="button"><i class="ti ti-download"></i><span>导出 JSON</span></button>
+          </div>
+        </header>
+        <section class="panel accounts-panel">
+          <header class="panel-head"><div><i class="ti ti-database"></i><span><strong>本地账号</strong><small id="accountCountLabel">0 个账号</small></span></div></header>
+          <div class="account-tools">
+            <label class="account-search" for="accountsSearch">
+              <i class="ti ti-search"></i>
+              <input id="accountsSearch" type="search" maxlength="100" placeholder="搜索平台、邮箱、账号 ID 或检测详情" autocomplete="off">
+              <button id="accountsSearchClear" type="button" title="清空搜索" aria-label="清空搜索" hidden><i class="ti ti-x"></i></button>
+            </label>
+            <div id="accountCategories" class="account-categories" role="tablist" aria-label="账号状态分类">
+              <button class="active" type="button" role="tab" data-account-category="all" aria-selected="true"><span>全部</span><b>0</b></button>
+              <button type="button" role="tab" data-account-category="alive" aria-selected="false"><span>存活</span><b>0</b></button>
+              <button type="button" role="tab" data-account-category="recovery" aria-selected="false"><span>待恢复</span><b>0</b></button>
+              <button type="button" role="tab" data-account-category="recovered" aria-selected="false"><span>恢复成功</span><b>0</b></button>
+              <button type="button" role="tab" data-account-category="attention" aria-selected="false"><span>异常/未检测</span><b>0</b></button>
+            </div>
+          </div>
+          <div id="healthLiveBar" class="health-live" hidden>
+            <span class="health-live-icon"><i class="ti ti-heartbeat"></i></span>
+            <span class="health-live-main"><strong id="healthLiveTitle">账号检测</strong><small id="healthLiveMeta">0 / 0</small><i><em id="healthLiveProgress"></em></i></span>
+            <span class="health-live-counts"><b id="healthLiveAlive">存活 0</b><b id="healthLiveRecovered">恢复 0</b><b id="healthLiveQueue" hidden>恢复队列 0 / 0</b><b id="healthLiveBanned">封禁 0</b></span>
+          </div>
+          <section id="recoveryProgressPanel" class="recovery-progress-panel" hidden>
+            <header>
+              <span><i class="ti ti-refresh"></i><strong id="recoveryProgressTitle">恢复进度</strong></span>
+              <div id="recoveryStageCounts" class="recovery-stage-counts"></div>
+            </header>
+            <div id="recoveryActiveList" class="recovery-active-list"></div>
+          </section>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>邮箱</th><th>密码</th><th>RT</th><th>状态</th><th>Access Token</th><th>存活时间</th><th aria-label="操作"></th></tr></thead>
+              <tbody id="accountsBody"></tbody>
+            </table>
+            <div id="accountsEmpty" class="empty-state"><i class="ti ti-database-off"></i><strong>暂无账号</strong></div>
+          </div>
+          <footer id="accountsPagination" class="pagination-bar">
+            <div class="pagination-info">
+              <strong id="accountsPageSummary">第 1 / 1 页</strong>
+              <span id="accountsRangeSummary">暂无账号</span>
+            </div>
+            <div class="pagination-controls">
+              <label class="page-size-control" for="accountsPageSize">
+                <span>每页</span>
+                <span class="page-size-select">
+                  <select id="accountsPageSize" aria-label="每页账号数量"><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select>
+                  <i class="ti ti-chevron-down"></i>
+                </span>
+              </label>
+              <nav class="pagination-nav" aria-label="账号列表分页">
+                <button id="accountsPrevPage" class="pagination-button" type="button" title="上一页" aria-label="上一页"><i class="ti ti-chevron-left"></i></button>
+                <span id="accountsPageNumbers" class="pagination-pages"></span>
+                <button id="accountsNextPage" class="pagination-button" type="button" title="下一页" aria-label="下一页"><i class="ti ti-chevron-right"></i></button>
+              </nav>
+            </div>
+          </footer>
+        </section>
+      </section>
+
+      <section id="page-outlook-pool" class="page">
+        <header class="page-header">
+          <div><span class="page-kicker">OUTLOOK POOL</span><h1>Outlook 号池</h1></div>
+          <button id="reloadOutlookPoolButton" class="button secondary" type="button"><i class="ti ti-refresh"></i><span>刷新</span></button>
+        </header>
+
+        <div class="stats-grid outlook-pool-stats">
+          <article class="stat-block green"><span><i class="ti ti-mail"></i>基础邮箱</span><strong id="outlookStatTotal">0</strong><small>已导入</small></article>
+          <article class="stat-block blue"><span><i class="ti ti-box-multiple"></i>可用分裂</span><strong id="outlookStatSlots">0</strong><small id="outlookStatSplitLimit">每号 5 个</small></article>
+          <article class="stat-block amber"><span><i class="ti ti-clock-play"></i>租用 / 已用</span><strong id="outlookStatOccupied">0</strong><small id="outlookStatOccupiedMeta">租用 0 · 已用 0</small></article>
+          <article class="stat-block red"><span><i class="ti ti-alert-circle"></i>异常邮箱</span><strong id="outlookStatFailed">0</strong><small>等待更新凭据</small></article>
+        </div>
+
+        <div class="outlook-pool-layout">
+          <section class="panel outlook-pool-panel">
+            <header class="panel-head"><div><i class="ti ti-brand-windows"></i><span><strong>邮箱状态</strong><small id="outlookPoolListMeta">0 个基础邮箱</small></span></div></header>
+            <div class="account-tools outlook-pool-tools">
+              <label class="account-search" for="outlookPoolSearch">
+                <i class="ti ti-search"></i>
+                <input id="outlookPoolSearch" type="search" maxlength="200" placeholder="搜索邮箱、Client ID 或错误信息" autocomplete="off">
+                <button id="outlookPoolSearchClear" type="button" title="清空搜索" aria-label="清空搜索" hidden><i class="ti ti-x"></i></button>
+              </label>
+              <div id="outlookPoolCategories" class="account-categories" role="tablist" aria-label="Outlook 号池状态分类">
+                <button class="active" type="button" role="tab" data-outlook-status="all" aria-selected="true"><span>全部</span><b>0</b></button>
+                <button type="button" role="tab" data-outlook-status="available" aria-selected="false"><span>可用</span><b>0</b></button>
+                <button type="button" role="tab" data-outlook-status="leased" aria-selected="false"><span>租用中</span><b>0</b></button>
+                <button type="button" role="tab" data-outlook-status="used" aria-selected="false"><span>已用完</span><b>0</b></button>
+                <button type="button" role="tab" data-outlook-status="failed" aria-selected="false"><span>异常</span><b>0</b></button>
+              </div>
+            </div>
+            <div class="table-wrap outlook-pool-table-wrap">
+              <table class="outlook-pool-table">
+                <thead><tr><th>基础邮箱</th><th>状态</th><th>分裂占用</th><th>可用</th><th>Client ID</th><th>更新时间 / 错误</th></tr></thead>
+                <tbody id="outlookPoolBody"></tbody>
+              </table>
+              <div id="outlookPoolEmpty" class="empty-state"><i class="ti ti-mail-off"></i><strong>暂无 Outlook 邮箱</strong></div>
+            </div>
+            <footer id="outlookPoolPagination" class="pagination-bar">
+              <div class="pagination-info"><strong id="outlookPoolPageSummary">第 1 / 1 页</strong><span id="outlookPoolRangeSummary">暂无邮箱</span></div>
+              <div class="pagination-controls">
+                <label class="page-size-control" for="outlookPoolPageSize"><span>每页</span><span class="page-size-select"><select id="outlookPoolPageSize"><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select><i class="ti ti-chevron-down"></i></span></label>
+                <nav class="pagination-nav" aria-label="Outlook 号池分页"><button id="outlookPoolPrevPage" class="pagination-button" type="button" title="上一页" aria-label="上一页"><i class="ti ti-chevron-left"></i></button><span id="outlookPoolPageNumbers" class="pagination-pages"></span><button id="outlookPoolNextPage" class="pagination-button" type="button" title="下一页" aria-label="下一页"><i class="ti ti-chevron-right"></i></button></nav>
+              </div>
+            </footer>
+          </section>
+
+          <aside class="outlook-pool-aside">
+            <section class="panel outlook-import-panel">
+              <header class="panel-head"><div><i class="ti ti-file-import"></i><span><strong>导入邮箱</strong><small>文本或 JSON 数组</small></span></div></header>
+              <div class="outlook-import-form">
+                <label class="field"><span>账号列表</span><textarea id="outlookPoolPageInput" placeholder="邮箱----密码----Client ID----Refresh Token&#10;每行一个账号"></textarea></label>
+                <button id="outlookPoolPageImportButton" class="button primary wide" type="button"><i class="ti ti-upload"></i><span>导入号池</span></button>
+              </div>
+            </section>
+            <section class="panel outlook-api-panel">
+              <header class="panel-head"><div><i class="ti ti-api"></i><span><strong>导入 API</strong><small>请求头 x-api-key</small></span></div></header>
+              <div class="outlook-api-fields">
+                <label class="field"><span>接口地址</span><input id="outlookImportEndpoint" type="text" readonly></label>
+                <label class="field"><span>API Key</span><span class="outlook-api-key-row"><input id="outlookImportApiKey" type="password" readonly><button id="toggleOutlookApiKey" class="icon-button" type="button" title="显示 API Key" aria-label="显示 API Key"><i class="ti ti-eye"></i></button><button id="copyOutlookApiKey" class="icon-button" type="button" title="复制 API Key" aria-label="复制 API Key"><i class="ti ti-copy"></i></button></span></label>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section id="page-settings" class="page">
+        <header class="page-header">
+          <div><span class="page-kicker">SETTINGS</span><h1>系统设置</h1></div>
+          <button id="saveSettingsButton" class="button primary" type="button"><i class="ti ti-device-floppy"></i><span>保存设置</span></button>
+        </header>
+        <div class="settings-layout">
+          <form id="settingsForm" class="settings-main">
+            <section class="panel settings-section">
+              <header class="panel-head"><div><i class="ti ti-mail"></i><span><strong>注册邮箱</strong><small>YYDS / Outlook 验证码邮箱</small></span></div></header>
+              <div class="form-grid">
+                <label class="field"><span>注册邮箱来源</span><select id="mailProvider"><option value="yyds">YYDS 临时邮箱</option><option value="outlook">Outlook 邮箱池</option></select></label>
+                <label class="field"><span>Outlook 分裂数</span><input id="outlookSplitLimit" type="number" min="1" max="50" value="5"></label>
+                <label class="field span-2"><span>API 地址</span><input id="mailApiBase" type="url" required></label>
+                <label class="field span-2"><span>API Key</span><span class="input-wrap"><i class="ti ti-key"></i><input id="mailApiKey" type="password" autocomplete="off"></span></label>
+                <label class="field"><span>邮箱域名</span><input id="mailDomains" placeholder="auto"></label>
+                <label class="field"><span>邮箱前缀</span><input id="mailPrefix" placeholder="留空随机"></label>
+              </div>
+            </section>
+
+            <section class="panel settings-section">
+              <header class="panel-head"><div><i class="ti ti-brand-windows"></i><span><strong>Outlook 邮箱池</strong><small id="outlookPoolStatus">读取邮箱池状态</small></span></div><button id="outlookPoolImportButton" class="button secondary" type="button"><i class="ti ti-file-import"></i><span>导入邮箱池</span></button></header>
+              <div class="form-grid">
+                <label class="field span-2"><span>账号列表</span><textarea id="outlookPoolInput" placeholder="邮箱----密码----Client ID----Refresh Token&#10;每行一个账号"></textarea></label>
+              </div>
+            </section>
+
+            <section class="panel settings-section">
+              <header class="panel-head"><div><i class="ti ti-cloud-cog"></i><span><strong>云端配置</strong><small>容量读取 / 账号上传</small></span></div></header>
+              <div class="form-grid">
+                <label class="toggle-row span-2"><span><strong>启用云端</strong><small>注册前读取云端</small></span><input id="cloudEnabled" type="checkbox"><i></i></label>
+                <label class="field span-2"><span>云端地址</span><input id="cloudServer" type="url" placeholder="https://free-api.yccc.me"></label>
+                <label class="field span-2"><span>管理员密钥</span><span class="input-wrap"><i class="ti ti-key"></i><input id="cloudAuthKey" type="password" autocomplete="off"></span></label>
+                <label class="field"><span>容量评估 limit</span><input id="cloudCapacityLimit" type="number" min="10" max="200"></label>
+                <label class="toggle-row"><span><strong>容量模型</strong><small>按建议数量注册</small></span><input id="cloudUseCapacity" type="checkbox"><i></i></label>
+                <label class="toggle-row"><span><strong>上传账号</strong><small>成功后逐个上传</small></span><input id="cloudUploadAccounts" type="checkbox"><i></i></label>
+                <label class="toggle-row"><span><strong>使用注册代理</strong><small>访问云端接口</small></span><input id="cloudUseProxy" type="checkbox"><i></i></label>
+                <label class="toggle-row span-2"><span><strong>自动监听注册</strong><small>服务启动后持续检查</small></span><input id="cloudMonitorEnabled" type="checkbox"><i></i></label>
+                <label class="field"><span>检查间隔（秒）</span><input id="cloudMonitorInterval" type="number" min="5" max="3600"></label>
+                <label class="field"><span>自动注册并发</span><input id="cloudMonitorConcurrency" type="number" min="1" max="50"></label>
+                <label class="field"><span>连续缺口确认</span><input id="cloudShortageConfirmations" type="number" min="1" max="10"></label>
+                <label class="field"><span>自动注册单批上限</span><input id="cloudMonitorBatchLimit" type="number" min="1" max="100"></label>
+              </div>
+            </section>
+
+            <section class="panel settings-section">
+              <header class="panel-head"><div><i class="ti ti-world-cog"></i><span><strong>网络与协议</strong><small>注册连接</small></span></div></header>
+              <div class="form-grid">
+                <label class="field span-2"><span>代理地址</span><input id="proxyUrl" placeholder="http://127.0.0.1:7890"></label>
+                <label class="field"><span>浏览器指纹</span><select id="browserProfile"><option value="chrome_windows">Chrome / Windows</option><option value="safari_macos">Safari / macOS</option></select></label>
+                <label class="field"><span>Playwright 浏览器后端</span><select id="browserEngine"><option value="camoufox">Camoufox（推荐）</option><option value="chrome">本机 Google Chrome</option></select></label>
+                <label class="field"><span>浏览器操作间隔（毫秒）</span><input id="browserSlowMo" type="number" min="0" max="1000" step="10"></label>
+                <label class="toggle-row span-2"><span><strong>浏览器无头模式</strong><small>关闭时显示独立 Chromium 窗口</small></span><input id="browserHeadless" type="checkbox"><i></i></label>
+                <label class="field"><span>请求超时（秒）</span><input id="requestTimeout" type="number" min="10" max="300"></label>
+                <label class="field"><span>验证码等待（秒）</span><input id="mailWaitTimeout" type="number" min="30" max="600"></label>
+                <label class="field"><span>邮箱轮询（秒）</span><input id="mailPollInterval" type="number" min="0.5" max="30" step="0.5"></label>
+              </div>
+            </section>
+
+            <section class="panel settings-section">
+              <header class="panel-head"><div><i class="ti ti-shield-lock"></i><span><strong>验证组件</strong><small>Sentinel / FlareSolverr</small></span></div></header>
+              <div class="form-grid">
+                <label class="toggle-row span-2"><span><strong>Sentinel SO Token</strong><small>协议生成</small></span><input id="sentinelEnabled" type="checkbox"><i></i></label>
+                <label class="toggle-row span-2"><span><strong>SO Token 必需</strong><small>生成失败时终止注册</small></span><input id="sentinelRequired" type="checkbox"><i></i></label>
+                <label class="toggle-row span-2"><span><strong>FlareSolverr</strong><small>环境异常时兜底</small></span><input id="flareEnabled" type="checkbox"><i></i></label>
+                <label class="field span-2"><span>FlareSolverr 容器地址</span><input id="flareUrl" type="url"></label>
+                <label class="toggle-row span-2"><span><strong>向容器透传代理</strong><small>默认关闭</small></span><input id="flarePassProxy" type="checkbox"><i></i></label>
+              </div>
+            </section>
+
+            <section class="panel settings-section">
+              <header class="panel-head"><div><i class="ti ti-heartbeat"></i><span><strong>账号检测</strong><small>存活检测 / 401 恢复</small></span></div></header>
+              <div class="form-grid">
+                <label class="toggle-row span-2"><span><strong>自动检测</strong><small>定时检查全部账号</small></span><input id="healthAutoEnabled" type="checkbox"><i></i></label>
+                <label class="field"><span>检测周期（秒）</span><input id="healthInterval" type="number" min="60" max="86400"></label>
+                <label class="field"><span>检测并发</span><input id="healthConcurrency" type="number" min="1" max="50"></label>
+                <label class="field"><span>恢复并发</span><input id="healthRecoveryConcurrency" type="number" min="1" max="50"></label>
+                <label class="field"><span>请求超时（秒）</span><input id="healthRequestTimeout" type="number" min="10" max="180"></label>
+              </div>
+            </section>
+          </form>
+
+          <aside class="settings-aside">
+            <section class="panel security-panel">
+              <header class="panel-head"><div><i class="ti ti-user-shield"></i><span><strong>登录密码</strong><small id="securityUsername">admin</small></span></div></header>
+              <div class="password-fields">
+                <label class="field"><span>当前密码</span><input id="currentPassword" type="password" autocomplete="current-password"></label>
+                <label class="field"><span>新密码</span><input id="newPassword" type="password" autocomplete="new-password"></label>
+                <button id="changePasswordButton" class="button secondary wide" type="button"><i class="ti ti-lock-check"></i><span>更新密码</span></button>
+              </div>
+            </section>
+            <section class="storage-strip"><i class="ti ti-file-type-json"></i><span><strong>本地存储</strong><small>data/*.json</small></span><em>ACTIVE</em></section>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="移动端导航">
+      <button class="active" type="button" data-page="register"><i class="ti ti-user-plus"></i><span>注册</span></button>
+      <button type="button" data-page="accounts"><i class="ti ti-database"></i><span>账号</span></button>
+      <button type="button" data-page="outlook-pool"><i class="ti ti-brand-windows"></i><span>号池</span></button>
+      <button type="button" data-page="settings"><i class="ti ti-settings"></i><span>设置</span></button>
+    </nav>
+  </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <script src="/app.js?v=20260730-2" defer></script>
+</body>
+</html>
