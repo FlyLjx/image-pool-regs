@@ -296,7 +296,10 @@ class OutlookMailboxPool:
                     candidates.append((item, next_slot))
             if not candidates:
                 raise RuntimeError(f"Outlook 邮箱池没有可用分裂邮箱（每个基础邮箱上限 {limit} 个）")
-            chosen, split_index = min(candidates, key=lambda candidate: str(candidate[0].get("last_leased_at") or ""))
+            # Preserve import order and exhaust each base mailbox before moving
+            # to the next one. The pool lock keeps concurrent workers on
+            # distinct split slots of the same mailbox.
+            chosen, split_index = candidates[0]
             lease_id = uuid.uuid4().hex
             leases = chosen.get("split_leases") if isinstance(chosen.get("split_leases"), dict) else {}
             lease_aliases = (

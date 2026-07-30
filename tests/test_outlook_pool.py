@@ -34,6 +34,39 @@ def test_outlook_pool_splits_one_mailbox_into_five_registration_addresses(tmp_pa
     }
 
 
+def test_outlook_pool_exhausts_one_base_mailbox_before_using_the_next(tmp_path):
+    pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
+    pool.import_text(
+        "first@outlook.com----Password123!----client-1----refresh-1\n"
+        "second@outlook.com----Password123!----client-2----refresh-2"
+    )
+
+    assigned = []
+    for _ in range(6):
+        mailbox = pool.acquire(5)
+        assigned.append(mailbox["registered_email"])
+        mailbox["split_limit"] = 5
+        pool.release(mailbox, used=True)
+
+    assert all(value.startswith("first+") for value in assigned[:5])
+    assert assigned[5].startswith("second+")
+
+
+def test_outlook_pool_concurrent_leases_fill_current_base_mailbox_first(tmp_path):
+    pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
+    pool.import_text(
+        "first@outlook.com----Password123!----client-1----refresh-1\n"
+        "second@outlook.com----Password123!----client-2----refresh-2"
+    )
+
+    leases = [pool.acquire(3) for _ in range(4)]
+
+    assert all(item["registered_email"].startswith("first+") for item in leases[:3])
+    assert leases[3]["registered_email"].startswith("second+")
+    for mailbox in leases:
+        pool.release(mailbox)
+
+
 def test_outlook_client_resolves_a_split_address_back_to_its_base_mailbox(tmp_path):
     path = tmp_path / "outlook_mailboxes.json"
     OutlookMailboxPool(path).import_text(
