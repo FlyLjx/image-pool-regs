@@ -39,5 +39,28 @@ jobs:
               cp -n data/*.json "$DATA_DIR"/
             fi
 
-            REG_DATA_DIR_HOST="$DATA_DIR" docker compose up -d --build --remove-orphans
+            if docker container inspect image-pool-flaresolverr >/dev/null 2>&1 \
+              && docker network inspect image-pool_default >/dev/null 2>&1; then
+              docker build -t image-pool-regs:latest .
+              docker rm -f image-pool-regs >/dev/null 2>&1 || true
+              docker run -d \
+                --name image-pool-regs \
+                --restart unless-stopped \
+                --network image-pool_default \
+                -p 8090:8090 \
+                -e REG_DATA_DIR=/app/data \
+                -e REG_FORCE_DIRECT=1 \
+                -e REG_FLARESOLVERR_URL=http://image-pool-flaresolverr:8191 \
+                -v "$DATA_DIR:/app/data" \
+                image-pool-regs:latest
+            else
+              REG_DATA_DIR_HOST="$DATA_DIR" docker compose up -d --build --remove-orphans
+            fi
+
+            for attempt in $(seq 1 45); do
+              STATUS="$(docker inspect --format='{{.State.Health.Status}}' image-pool-regs 2>/dev/null || true)"
+              if [ "$STATUS" = healthy ]; then break; fi
+              sleep 2
+            done
             docker inspect --format='{{json .State.Health}}' image-pool-regs
+            test "$(docker inspect --format='{{.State.Health.Status}}' image-pool-regs)" = healthy

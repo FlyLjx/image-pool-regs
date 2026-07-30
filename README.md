@@ -28,7 +28,7 @@ python -m venv .venv
 REG_DATA_DIR_HOST=/opt/image-pool-regs-data docker compose up -d --build
 ```
 
-Compose 默认将服务发布到 `8090`，注册与云端请求均直连，并同时启动 FlareSolverr 容器作为 Cloudflare 异常兜底。GitHub Actions 的 `Deploy` 工作流需要配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`，可选配置 `DEPLOY_PORT` 和 `DEPLOY_PATH`。
+Compose 默认将服务发布到 `8090`，注册与云端请求均直连，并同时启动 FlareSolverr 容器作为 Cloudflare 异常兜底。GitHub Actions 的 `Deploy` 工作流会优先复用服务器 `image-pool_default` 网络中的 `image-pool-flaresolverr`，不存在时再由 Compose 启动同栈实例。工作流需要配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`，可选配置 `DEPLOY_PORT` 和 `DEPLOY_PATH`。
 
 首次启动账号：
 
