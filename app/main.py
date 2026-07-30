@@ -182,6 +182,11 @@ class OutlookPoolImportRequest(BaseModel):
     items: str = Field(min_length=1, max_length=1_000_000)
 
 
+class DeleteOutlookPoolRequest(BaseModel):
+    mailbox_ids: list[str] = Field(default_factory=list, max_length=1000)
+    clear_all: bool = False
+
+
 class DeleteAccountsRequest(BaseModel):
     account_ids: list[str] = Field(default_factory=list, max_length=200)
 
@@ -392,6 +397,23 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         runtime_manager.log("success", f"Outlook 邮箱池已导入：新增 {result['added']}，更新 {result['updated']}")
         return result
+
+    @app.delete("/api/outlook-pool")
+    async def delete_outlook_pool(
+        body: DeleteOutlookPoolRequest,
+        _user: str = Depends(current_user),
+    ) -> dict[str, Any]:
+        mailbox_ids = list(dict.fromkeys(str(value or "").strip() for value in body.mailbox_ids if str(value or "").strip()))
+        if not body.clear_all and not mailbox_ids:
+            raise HTTPException(status_code=400, detail="请选择要删除的 Outlook 邮箱")
+        result = await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).delete,
+            mailbox_ids,
+            clear_all=body.clear_all,
+        )
+        operation = "已清空" if body.clear_all else "已删除所选"
+        runtime_manager.log("warning", f"Outlook 邮箱池{operation}：{result['removed']} 个")
+        return {"ok": True, **result}
 
     @app.put("/api/settings/registration/concurrency")
     async def save_registration_concurrency(

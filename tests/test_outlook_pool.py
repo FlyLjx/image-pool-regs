@@ -86,6 +86,29 @@ def test_outlook_pool_snapshot_reports_split_and_lease_state(tmp_path):
     pool.release(mailbox)
 
 
+def test_outlook_pool_deletes_selected_mailboxes_and_can_clear_all(tmp_path):
+    pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
+    for index in range(3):
+        pool.import_payload({
+            "email": f"owner{index}@outlook.com",
+            "password": "Password123!",
+            "client_id": f"client-{index}",
+            "refresh_token": f"refresh-{index}",
+        })
+    snapshot = pool.snapshot(5, page_size=20)
+    selected_id = snapshot["items"][0]["id"]
+
+    deleted = pool.delete([selected_id])
+    assert deleted["removed"] == 1
+    assert deleted["total"] == 2
+    assert selected_id not in {item["id"] for item in pool.snapshot(5)["items"]}
+
+    cleared = pool.delete(clear_all=True)
+    assert cleared["removed"] == 2
+    assert cleared["total"] == 0
+    assert pool.snapshot(5)["items"] == []
+
+
 def test_outlook_oauth_retries_common_then_consumers_for_tenant_mismatch():
     client = object.__new__(OutlookMailClient)
     client.request_timeout = 30

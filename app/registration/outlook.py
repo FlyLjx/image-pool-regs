@@ -250,6 +250,23 @@ class OutlookMailboxPool:
     def import_text(self, text: str) -> dict[str, int]:
         return self.import_payload(text)
 
+    def delete(self, mailbox_ids: list[str] | None = None, *, clear_all: bool = False) -> dict[str, int]:
+        targets = {str(value or "").strip() for value in (mailbox_ids or []) if str(value or "").strip()}
+        with self._lock:
+            entries = self._read_unlocked()
+            if clear_all:
+                removed = len(entries)
+                remaining: list[dict[str, Any]] = []
+            elif targets:
+                remaining = [item for item in entries if str(item.get("id") or "") not in targets]
+                removed = len(entries) - len(remaining)
+            else:
+                remaining = entries
+                removed = 0
+            if removed:
+                self._write_unlocked(remaining)
+            return {**self._summary(remaining), "removed": removed}
+
     @staticmethod
     def _alias(email: str, tag: str) -> str:
         local, domain = str(email).rsplit("@", 1)

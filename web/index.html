@@ -8,7 +8,7 @@
   <title>AIπ 自动注册</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.35.0/dist/tabler-icons.min.css">
-  <link rel="stylesheet" href="/styles.css?v=20260730-2">
+  <link rel="stylesheet" href="/styles.css?v=20260730-3">
 </head>
 <body>
   <div id="boot" class="boot-screen" aria-live="polite">
@@ -206,7 +206,11 @@
       <section id="page-outlook-pool" class="page">
         <header class="page-header">
           <div><span class="page-kicker">OUTLOOK POOL</span><h1>Outlook 号池</h1></div>
-          <button id="reloadOutlookPoolButton" class="button secondary" type="button"><i class="ti ti-refresh"></i><span>刷新</span></button>
+          <div class="header-actions">
+            <button id="deleteSelectedOutlookButton" class="button danger" type="button" disabled><i class="ti ti-trash"></i><span>删除所选</span></button>
+            <button id="clearOutlookPoolButton" class="button danger" type="button"><i class="ti ti-trash-x"></i><span>清空号池</span></button>
+            <button id="reloadOutlookPoolButton" class="button secondary" type="button"><i class="ti ti-refresh"></i><span>刷新</span></button>
+          </div>
         </header>
 
         <div class="stats-grid outlook-pool-stats">
@@ -235,7 +239,7 @@
             </div>
             <div class="table-wrap outlook-pool-table-wrap">
               <table class="outlook-pool-table">
-                <thead><tr><th>基础邮箱</th><th>状态</th><th>分裂占用</th><th>可用</th><th>Client ID</th><th>更新时间 / 错误</th></tr></thead>
+                <thead><tr><th class="outlook-select-cell"><input id="outlookPoolSelectPage" type="checkbox" title="选择当前页" aria-label="选择当前页"></th><th>基础邮箱</th><th>状态</th><th>分裂占用</th><th>可用</th><th>Client ID</th><th>更新时间 / 错误</th></tr></thead>
                 <tbody id="outlookPoolBody"></tbody>
               </table>
               <div id="outlookPoolEmpty" class="empty-state"><i class="ti ti-mail-off"></i><strong>暂无 Outlook 邮箱</strong></div>
@@ -373,6 +377,6 @@
   </div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-  <script src="/app.js?v=20260730-2" defer></script>
+  <script src="/app.js?v=20260730-3" defer></script>
 </body>
 </html>

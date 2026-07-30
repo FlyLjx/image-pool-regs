@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.registration.outlook import OutlookMailboxPool
 from app.storage import JsonStore
 
 
@@ -128,3 +129,35 @@ def test_outlook_pool_api_supports_api_key_json_import_and_authenticated_listing
         assert listing["items"][0]["email"] == "pool@example.test"
         assert listing["import_api"]["api_key"] == "outlook-import-test-key"
         assert "refresh_token" not in listing["items"][0]
+
+
+def test_authenticated_outlook_pool_delete_selected_and_clear_all(tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("REG_ADMIN_PASSWORD", "admin123")
+    store = JsonStore(tmp_path)
+    app = create_app(store=store)
+    pool = OutlookMailboxPool(store.path("outlook_mailboxes.json"))
+    for index in range(3):
+        pool.import_payload({
+            "email": f"pool{index}@example.test",
+            "password": "Password123!",
+            "client_id": f"client-{index}",
+            "refresh_token": f"refresh-{index}",
+        })
+
+    with TestClient(app) as client:
+        listing = pool.snapshot(5)
+        selected_id = listing["items"][0]["id"]
+        assert client.request("DELETE", "/api/outlook-pool", json={"mailbox_ids": [selected_id]}).status_code == 401
+
+        client.post("/api/auth/login", json={"username": "admin", "password": "admin123"})
+        empty = client.request("DELETE", "/api/outlook-pool", json={"mailbox_ids": []})
+        assert empty.status_code == 400
+
+        deleted = client.request("DELETE", "/api/outlook-pool", json={"mailbox_ids": [selected_id]}).json()
+        assert deleted["removed"] == 1
+        assert deleted["total"] == 2
+
+        cleared = client.request("DELETE", "/api/outlook-pool", json={"clear_all": True}).json()
+        assert cleared["removed"] == 2
+        assert cleared["total"] == 0

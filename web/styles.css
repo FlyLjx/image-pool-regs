@@ -299,12 +299,16 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
 .outlook-pool-panel { min-width: 0; overflow: hidden; }
 .outlook-pool-tools { grid-template-columns: minmax(210px, 290px) minmax(0, 1fr); }
 .outlook-pool-table-wrap { min-height: 360px; }
-.outlook-pool-table th:nth-child(1) { width: 24%; }
-.outlook-pool-table th:nth-child(2) { width: 12%; }
-.outlook-pool-table th:nth-child(3) { width: 14%; }
-.outlook-pool-table th:nth-child(4) { width: 8%; }
-.outlook-pool-table th:nth-child(5) { width: 18%; }
-.outlook-pool-table th:nth-child(6) { width: 24%; }
+.outlook-pool-table th:nth-child(1) { width: 42px; }
+.outlook-pool-table th:nth-child(2) { width: 24%; }
+.outlook-pool-table th:nth-child(3) { width: 12%; }
+.outlook-pool-table th:nth-child(4) { width: 14%; }
+.outlook-pool-table th:nth-child(5) { width: 8%; }
+.outlook-pool-table th:nth-child(6) { width: 18%; }
+.outlook-pool-table th:nth-child(7) { width: 24%; }
+.outlook-select-cell { text-align: center; }
+.outlook-select-cell input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); cursor: pointer; }
+.outlook-pool-table tr.selected { background: var(--green-soft); }
 .outlook-pool-table td.email-cell > span { display: block; overflow: hidden; text-overflow: ellipsis; }
 .outlook-split-usage { display: inline-flex; align-items: baseline; gap: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .outlook-split-usage strong { color: var(--text); font-size: 13px; }
@@ -411,12 +415,13 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
   td:nth-child(2), td:nth-child(3), td:nth-child(4), td.token-cell, td:nth-child(6) { grid-column: 1; }
   td:nth-child(6) { color: var(--subtle); font-size: 10px; }
   td:last-child { grid-column: 2; grid-row: 1 / span 6; align-self: center; }
-  .outlook-pool-table tr { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; }
+  .outlook-pool-table tr { grid-template-columns: 24px minmax(0, 1fr) auto; gap: 5px 8px; }
   .outlook-pool-table td { grid-column: 1 / -1; }
-  .outlook-pool-table td:nth-child(1) { grid-column: 1; grid-row: 1; }
-  .outlook-pool-table td:nth-child(2) { grid-column: 2; grid-row: 1; justify-self: end; }
-  .outlook-pool-table td:nth-child(3), .outlook-pool-table td:nth-child(4), .outlook-pool-table td:nth-child(5), .outlook-pool-table td:nth-child(6) { grid-column: 1 / -1; grid-row: auto; }
-  .outlook-pool-table td:nth-child(4)::before { content: "可用分裂 "; color: var(--subtle); font-size: 9px; font-weight: 500; }
+  .outlook-pool-table td:nth-child(1) { grid-column: 1; grid-row: 1; align-self: center; }
+  .outlook-pool-table td:nth-child(2) { grid-column: 2; grid-row: 1; }
+  .outlook-pool-table td:nth-child(3) { grid-column: 3; grid-row: 1; justify-self: end; }
+  .outlook-pool-table td:nth-child(4), .outlook-pool-table td:nth-child(5), .outlook-pool-table td:nth-child(6), .outlook-pool-table td:nth-child(7) { grid-column: 2 / -1; grid-row: auto; }
+  .outlook-pool-table td:nth-child(5)::before { content: "可用分裂 "; color: var(--subtle); font-size: 9px; font-weight: 500; }
   .outlook-pool-table td.token-cell { color: var(--muted); }
   .pagination-bar { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px; }
   .pagination-info { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

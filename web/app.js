@@ -38,6 +38,7 @@ const state = {
   outlookPoolSearch: '',
   outlookPoolStatus: 'all',
   outlookPoolSearchTimer: null,
+  outlookPoolSelected: new Set(),
 }
 
 function escapeHtml(value) {
@@ -689,6 +690,26 @@ function outlookPoolStatusPresentation(status) {
   return map[status] || ['未知', 'unchecked', 'ti-help-circle']
 }
 
+function updateOutlookPoolSelectionUi() {
+  const pageIds = state.outlookPoolItems.map((item) => String(item.id || '')).filter(Boolean)
+  const selectedOnPage = pageIds.filter((id) => state.outlookPoolSelected.has(id)).length
+  const selectPage = $('#outlookPoolSelectPage')
+  selectPage.checked = pageIds.length > 0 && selectedOnPage === pageIds.length
+  selectPage.indeterminate = selectedOnPage > 0 && selectedOnPage < pageIds.length
+  selectPage.disabled = pageIds.length === 0
+  const deleteButton = $('#deleteSelectedOutlookButton')
+  deleteButton.disabled = state.outlookPoolSelected.size === 0
+  deleteButton.querySelector('span').textContent = state.outlookPoolSelected.size
+    ? `删除所选 (${state.outlookPoolSelected.size})`
+    : '删除所选'
+  $('#clearOutlookPoolButton').disabled = Number(state.outlookPool?.summary?.total || 0) === 0
+  $$('[data-outlook-select-id]').forEach((input) => {
+    const selected = state.outlookPoolSelected.has(input.dataset.outlookSelectId)
+    input.checked = selected
+    input.closest('tr')?.classList.toggle('selected', selected)
+  })
+}
+
 function renderOutlookPoolPagination() {
   const firstItem = state.outlookPoolTotal ? ((state.outlookPoolPage - 1) * state.outlookPoolPageSize) + 1 : 0
   const lastItem = Math.min(state.outlookPoolPage * state.outlookPoolPageSize, state.outlookPoolTotal)
@@ -763,6 +784,7 @@ function renderOutlookPool(payload) {
     const detail = item.last_error || '状态正常'
     const row = document.createElement('tr')
     row.innerHTML = `
+      <td class="outlook-select-cell"><input type="checkbox" data-outlook-select-id="${escapeHtml(item.id)}" aria-label="选择 ${escapeHtml(item.email || 'Outlook 邮箱')}"></td>
       <td class="email-cell" title="${escapeHtml(item.email)}"><span>${escapeHtml(item.email || '-')}</span></td>
       <td><span class="health-state ${tone}" title="${escapeHtml(detail)}"><i class="ti ${icon}"></i>${escapeHtml(label)}</span></td>
       <td><span class="outlook-split-usage"><strong>${occupied}</strong> 已用${activeLeases ? `<em>${activeLeases} 租用</em>` : ''}<small>/ ${Number(item.split_limit) || split}</small></span></td>
@@ -771,6 +793,7 @@ function renderOutlookPool(payload) {
       <td><div class="outlook-update-cell"><time>${escapeHtml(formatTime(item.updated_at))}</time><small class="${item.last_error ? 'error' : ''}" title="${escapeHtml(detail)}">${escapeHtml(detail)}</small></div></td>`
     body.appendChild(row)
   })
+  updateOutlookPoolSelectionUi()
 }
 
 async function loadOutlookPool(page = null) {
@@ -802,6 +825,46 @@ async function importOutlookPool(source = 'settings') {
     toast(`Outlook 邮箱池已导入：新增 ${result.added || 0}，更新 ${result.updated || 0}`)
   } finally {
     setBusy(button, false)
+  }
+}
+
+async function deleteSelectedOutlookMailboxes() {
+  const mailboxIds = [...state.outlookPoolSelected]
+  if (!mailboxIds.length) return
+  if (!window.confirm(`确定删除选中的 ${mailboxIds.length} 个 Outlook 基础邮箱？`)) return
+  const button = $('#deleteSelectedOutlookButton')
+  setBusy(button, true, '删除中')
+  try {
+    const result = await api('/api/outlook-pool', {
+      method: 'DELETE',
+      body: JSON.stringify({ mailbox_ids: mailboxIds, clear_all: false }),
+    })
+    state.outlookPoolSelected.clear()
+    await loadOutlookPool(state.outlookPoolPage)
+    toast(`已删除 ${result.removed || 0} 个 Outlook 邮箱`)
+  } finally {
+    setBusy(button, false)
+    updateOutlookPoolSelectionUi()
+  }
+}
+
+async function clearOutlookPool() {
+  const total = Number(state.outlookPool?.summary?.total || 0)
+  if (!total) return
+  if (!window.confirm(`确定清空 Outlook 号池中的全部 ${total} 个基础邮箱？此操作会同时移除使用记录和异常项。`)) return
+  const button = $('#clearOutlookPoolButton')
+  setBusy(button, true, '清空中')
+  try {
+    const result = await api('/api/outlook-pool', {
+      method: 'DELETE',
+      body: JSON.stringify({ mailbox_ids: [], clear_all: true }),
+    })
+    state.outlookPoolSelected.clear()
+    await loadOutlookPool(1)
+    toast(`Outlook 号池已清空：删除 ${result.removed || 0} 个邮箱`)
+  } finally {
+    setBusy(button, false)
+    updateOutlookPoolSelectionUi()
   }
 }
 
@@ -1101,6 +1164,8 @@ $('#saveSettingsButton').addEventListener('click', () => saveSettings().catch((e
 $('#outlookPoolImportButton').addEventListener('click', () => importOutlookPool().catch((error) => toast(error.message, 'error')))
 $('#outlookPoolPageImportButton').addEventListener('click', () => importOutlookPool('page').catch((error) => toast(error.message, 'error')))
 $('#reloadOutlookPoolButton').addEventListener('click', () => loadOutlookPool().catch((error) => toast(error.message, 'error')))
+$('#deleteSelectedOutlookButton').addEventListener('click', () => deleteSelectedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
+$('#clearOutlookPoolButton').addEventListener('click', () => clearOutlookPool().catch((error) => toast(error.message, 'error')))
 $('#changePasswordButton').addEventListener('click', () => changePassword().catch((error) => toast(error.message, 'error')))
 $('#exportAccountsButton').addEventListener('click', () => { window.location.href = '/api/accounts/export' })
 $('#accountsPrevPage').addEventListener('click', () => loadAccounts(state.accountPage - 1).catch((error) => toast(error.message, 'error')))
@@ -1127,6 +1192,22 @@ $('#outlookPoolPageSize').addEventListener('change', (event) => {
   state.outlookPoolPageSize = Number(event.target.value) || 20
   state.outlookPoolPage = 1
   loadOutlookPool(1).catch((error) => toast(error.message, 'error'))
+})
+$('#outlookPoolSelectPage').addEventListener('change', (event) => {
+  state.outlookPoolItems.forEach((item) => {
+    const id = String(item.id || '')
+    if (!id) return
+    if (event.target.checked) state.outlookPoolSelected.add(id)
+    else state.outlookPoolSelected.delete(id)
+  })
+  updateOutlookPoolSelectionUi()
+})
+$('#outlookPoolBody').addEventListener('change', (event) => {
+  const input = event.target.closest('[data-outlook-select-id]')
+  if (!input) return
+  if (input.checked) state.outlookPoolSelected.add(input.dataset.outlookSelectId)
+  else state.outlookPoolSelected.delete(input.dataset.outlookSelectId)
+  updateOutlookPoolSelectionUi()
 })
 $('#outlookPoolCategories').addEventListener('click', (event) => {
   const button = event.target.closest('[data-outlook-status]')
