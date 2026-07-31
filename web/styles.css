@@ -300,12 +300,13 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
 .outlook-pool-tools { grid-template-columns: minmax(210px, 290px) minmax(0, 1fr); }
 .outlook-pool-table-wrap { min-height: 360px; }
 .outlook-pool-table th:nth-child(1) { width: 42px; }
-.outlook-pool-table th:nth-child(2) { width: 24%; }
-.outlook-pool-table th:nth-child(3) { width: 12%; }
-.outlook-pool-table th:nth-child(4) { width: 14%; }
-.outlook-pool-table th:nth-child(5) { width: 8%; }
-.outlook-pool-table th:nth-child(6) { width: 18%; }
-.outlook-pool-table th:nth-child(7) { width: 24%; }
+.outlook-pool-table th:nth-child(2) { width: 22%; }
+.outlook-pool-table th:nth-child(3) { width: 10%; }
+.outlook-pool-table th:nth-child(4) { width: 12%; }
+.outlook-pool-table th:nth-child(5) { width: 7%; }
+.outlook-pool-table th:nth-child(6) { width: 120px; }
+.outlook-pool-table th:nth-child(7) { width: 18%; }
+.outlook-pool-table th:nth-child(8) { width: 22%; }
 .outlook-select-cell { text-align: center; }
 .outlook-select-cell input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); cursor: pointer; }
 .outlook-pool-table tr.selected { background: var(--green-soft); }
@@ -428,7 +429,7 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
   .pagination-info span { text-align: right; }
   .pagination-controls { justify-content: space-between; gap: 8px; }
   .pagination-pages .pagination-page:not(.active), .pagination-pages .pagination-ellipsis { display: none; }
-  .bottom-nav { position: fixed; inset: auto 8px max(8px, env(safe-area-inset-bottom, 0px)) 8px; z-index: 100; display: grid; grid-template-columns: repeat(4, 1fr); height: 58px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.98); box-shadow: 0 8px 24px rgba(23, 33, 27, .12); }
+  .bottom-nav { position: fixed; inset: auto 8px max(8px, env(safe-area-inset-bottom, 0px)) 8px; z-index: 100; display: grid; grid-template-columns: repeat(3, 1fr); height: 58px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.98); box-shadow: 0 8px 24px rgba(23, 33, 27, .12); }
   .bottom-nav button { display: grid; place-items: center; align-content: center; gap: 2px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 10px; }
   .bottom-nav button i { font-size: 19px; }
   .bottom-nav button.active { background: var(--green-soft); color: var(--green); }

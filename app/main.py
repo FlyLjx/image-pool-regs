@@ -223,6 +223,11 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        cleared_outlook_leases = await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).clear_leases
+        )
+        if cleared_outlook_leases:
+            runtime_manager.log("warning", f"已清理 Outlook 号池残留租约：{cleared_outlook_leases} 个")
         runtime_health.start()
         runtime_monitor.start()
         try:
@@ -653,9 +658,14 @@ def create_app(
             candidate.relative_to(WEB_ROOT.resolve())
         except ValueError as exc:
             raise HTTPException(status_code=404, detail="文件不存在") from exc
-        if candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(WEB_ROOT / "index.html")
+        response_path = candidate if candidate.is_file() else WEB_ROOT / "index.html"
+        response = FileResponse(response_path)
+        # Local admin UI changes often during rollback/redeploy; avoid Chrome keeping an old app.js
+        # that leaves the boot screen stuck on “正在载入”.
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     return app
 

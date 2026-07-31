@@ -198,7 +198,7 @@ async function showApp(username) {
   $('#accountName').textContent = username
   $('#accountInitial').textContent = (username[0] || 'A').toUpperCase()
   $('#securityUsername').textContent = username
-  await Promise.all([loadSettings(), loadOutlookPool(), loadDashboard(), loadAccounts(), loadLogs()])
+  await Promise.all([loadSettings(), loadOutlookPool(), loadDashboard(), loadLogs()])
   if (!state.pollTimer) state.pollTimer = window.setInterval(pollRuntime, 1500)
 }
 
@@ -213,11 +213,10 @@ async function checkSession() {
 }
 
 function setPage(page) {
-  const target = ['register', 'accounts', 'outlook-pool', 'settings'].includes(page) ? page : 'register'
+  const target = ['register', 'outlook-pool', 'settings'].includes(page) ? page : 'register'
   $$('.page').forEach((node) => node.classList.toggle('active', node.id === `page-${target}`))
   $$('[data-page]').forEach((node) => node.classList.toggle('active', node.dataset.page === target))
   if (location.hash !== `#${target}`) history.replaceState(null, '', `#${target}`)
-  if (target === 'accounts') loadAccounts().catch((error) => toast(error.message, 'error'))
   if (target === 'outlook-pool') loadOutlookPool().catch((error) => toast(error.message, 'error'))
 }
 
@@ -310,7 +309,8 @@ function renderDashboard(payload) {
   state.health = health
   $('#statTotal').textContent = accounts.total || 0
   $('#statToday').textContent = accounts.today || 0
-  $('#sideAccountCount').textContent = accounts.total || 0
+  const sideAccountCount = $('#sideAccountCount')
+  if (sideAccountCount) sideAccountCount.textContent = accounts.total || 0
   const finished = registrationProviders.reduce((sum, provider) => {
     const job = jobs[provider]
     return sum + (Number(job.success) || 0) + (Number(job.failed) || 0)
@@ -343,7 +343,6 @@ function renderDashboard(payload) {
   monitorButton.classList.toggle('danger', monitorEnabled)
   monitorButton.classList.toggle('secondary', !monitorEnabled)
   const completedProvider = registrationProviders.some((provider) => jobIsActive(previousJobs[provider]) && !jobIsActive(jobs[provider]))
-  if (completedProvider) loadAccounts().catch(() => {})
   const healthRunning = ['running', 'stopping'].includes(health.state)
   const healthStopping = health.state === 'stopping'
   const healthButton = $('#healthCheckAllButton')
@@ -386,8 +385,6 @@ function renderDashboard(payload) {
     : `恢复中 ${recoveryActive} · 等待 ${recoveryWaiting} · 尝试完成 ${recoveryCompleted}/${recoveryTotal}`
   renderRecoveryProgress(health)
   $('#healthLiveBanned').textContent = `封禁 ${health.banned || 0}`
-  if (healthRunning && $('#page-accounts').classList.contains('active')) loadAccounts().catch(() => {})
-  else if (['running', 'stopping'].includes(previousHealthState) && ['completed', 'cancelled'].includes(health.state)) loadAccounts().catch(() => {})
 }
 
 function renderRecoveryProgress(health) {
@@ -737,11 +734,11 @@ function renderOutlookPool(payload) {
   const used = Number(pool.used) || 0
   const failed = Number(pool.failed) || 0
   const split = Number(pool.split_limit) || Number($('#outlookSplitLimit').value) || 5
-  $('#outlookPoolStatus').textContent = `基础邮箱 ${total} · 可用分裂 ${slots} · 每号 ${split} 个 · 已用 ${used}${failed ? ` · 异常 ${failed}` : ''}`
+  $('#outlookPoolStatus').textContent = `基础邮箱 ${total} · 可用注册 ${slots} · 母号 + ${split} 分裂 · 已用 ${used}${failed ? ` · 异常 ${failed}` : ''}`
   $('#sideOutlookSlotCount').textContent = slots
   $('#outlookStatTotal').textContent = total
   $('#outlookStatSlots').textContent = slots
-  $('#outlookStatSplitLimit').textContent = `每号 ${split} 个`
+  $('#outlookStatSplitLimit').textContent = `母号 + ${split} 分裂`
   $('#outlookStatOccupied').textContent = leased + used
   $('#outlookStatOccupiedMeta').textContent = `租用 ${leased} · 已用 ${used}`
   $('#outlookStatFailed').textContent = failed
@@ -787,8 +784,9 @@ function renderOutlookPool(payload) {
       <td class="outlook-select-cell"><input type="checkbox" data-outlook-select-id="${escapeHtml(item.id)}" aria-label="选择 ${escapeHtml(item.email || 'Outlook 邮箱')}"></td>
       <td class="email-cell" title="${escapeHtml(item.email)}"><span>${escapeHtml(item.email || '-')}</span></td>
       <td><span class="health-state ${tone}" title="${escapeHtml(detail)}"><i class="ti ${icon}"></i>${escapeHtml(label)}</span></td>
-      <td><span class="outlook-split-usage"><strong>${occupied}</strong> 已用${activeLeases ? `<em>${activeLeases} 租用</em>` : ''}<small>/ ${Number(item.split_limit) || split}</small></span></td>
+      <td><span class="outlook-split-usage"><strong>${occupied}</strong> 已用${activeLeases ? `<em>${activeLeases} 租用</em>` : ''}<small>/ ${(Number(item.split_limit) || split) + 1}</small></span></td>
       <td><strong class="outlook-available-count">${Number(item.available_splits) || 0}</strong></td>
+      <td><time title="${escapeHtml(item.imported_at || '')}">${escapeHtml(formatTime(item.imported_at))}</time></td>
       <td class="token-cell" title="${escapeHtml(item.client_id)}">${escapeHtml(item.client_id || '-')}</td>
       <td><div class="outlook-update-cell"><time>${escapeHtml(formatTime(item.updated_at))}</time><small class="${item.last_error ? 'error' : ''}" title="${escapeHtml(detail)}">${escapeHtml(detail)}</small></div></td>`
     body.appendChild(row)
@@ -882,7 +880,8 @@ function renderAccounts(payload) {
   $('#accountCountLabel').textContent = filtered
     ? `${state.accountTotal} 条匹配 / ${state.accountAllTotal} 个账号`
     : `${state.accountAllTotal} 个账号`
-  $('#sideAccountCount').textContent = state.accountAllTotal
+  const sideAccountCount = $('#sideAccountCount')
+  if (sideAccountCount) sideAccountCount.textContent = state.accountAllTotal
   const counts = payload.counts || {}
   $$('[data-account-category]').forEach((button) => {
     const category = button.dataset.accountCategory

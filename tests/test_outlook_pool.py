@@ -3,34 +3,38 @@ from __future__ import annotations
 import json
 import re
 
+import pytest
+
 from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
 from app.registration.mail import extract_otp
 
 
-def test_outlook_pool_splits_one_mailbox_into_five_registration_addresses(tmp_path):
+def test_outlook_pool_registers_mother_then_five_split_addresses(tmp_path):
     pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
     imported = pool.import_text(
         "owner@outlook.com----Password123!----client-id----refresh-token"
     )
 
-    assert imported["available_slots"] == 5
+    assert imported["available_slots"] == 6
 
     assigned = []
-    for _ in range(5):
+    for _ in range(6):
         mailbox = pool.acquire(5)
         assigned.append(mailbox["registered_email"])
         mailbox["split_limit"] = 5
         pool.release(mailbox, used=True)
 
-    assert len(set(assigned)) == 5
-    assert all(re.fullmatch(r"owner\+[0-9a-f]{12}@outlook\.com", value) for value in assigned)
+    assert len(set(assigned)) == 6
+    assert assigned[0] == "owner@outlook.com"
+    assert all(re.fullmatch(r"owner\+[0-9a-f]{12}@outlook\.com", value) for value in assigned[1:])
     assert all("+gpt" not in value for value in assigned)
     summary = pool.summary(5)
     assert summary["available_slots"] == 0
     assert summary["used"] == 1
     stored = json.loads((tmp_path / "outlook_mailboxes.json").read_text(encoding="utf-8"))[0]
+    assert stored["used_split_slots"] == [1, 2, 3, 4, 5]
     assert set(stored["used_split_aliases"].values()) == {
-        value.split("+", 1)[1].split("@", 1)[0] for value in assigned
+        value.split("+", 1)[1].split("@", 1)[0] for value in assigned[1:]
     }
 
 
@@ -42,29 +46,63 @@ def test_outlook_pool_exhausts_one_base_mailbox_before_using_the_next(tmp_path):
     )
 
     assigned = []
-    for _ in range(6):
+    for _ in range(7):
         mailbox = pool.acquire(5)
         assigned.append(mailbox["registered_email"])
         mailbox["split_limit"] = 5
         pool.release(mailbox, used=True)
 
-    assert all(value.startswith("first+") for value in assigned[:5])
-    assert assigned[5].startswith("second+")
+    assert assigned[0] == "first@outlook.com"
+    assert all(value.startswith("first+") for value in assigned[1:6])
+    assert assigned[6] == "second@outlook.com"
 
 
-def test_outlook_pool_concurrent_leases_fill_current_base_mailbox_first(tmp_path):
+def test_outlook_pool_waits_for_current_base_mailbox_before_next_split(tmp_path):
     pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
     pool.import_text(
         "first@outlook.com----Password123!----client-1----refresh-1\n"
         "second@outlook.com----Password123!----client-2----refresh-2"
     )
 
-    leases = [pool.acquire(3) for _ in range(4)]
+    first = pool.acquire(3)
 
-    assert all(item["registered_email"].startswith("first+") for item in leases[:3])
-    assert leases[3]["registered_email"].startswith("second+")
-    for mailbox in leases:
-        pool.release(mailbox)
+    assert first["registered_email"] == "first@outlook.com"
+    with pytest.raises(RuntimeError, match="母号正在注册"):
+        pool.acquire(3)
+    pool.release(first, used=True)
+    second = pool.acquire(3)
+    assert second["registered_email"].startswith("first+")
+    pool.release(second)
+
+
+def test_outlook_pool_old_alias_slots_do_not_skip_mother_mailbox(tmp_path):
+    path = tmp_path / "outlook_mailboxes.json"
+    path.write_text(
+        json.dumps([
+            {
+                "email": "owner@outlook.com",
+                "password": "Password123!",
+                "client_id": "client-id",
+                "refresh_token": "refresh-token",
+                "status": "available",
+                "used_split_slots": [1, 2],
+                "imported_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-02T00:00:00+00:00",
+            }
+        ]),
+        encoding="utf-8",
+    )
+    pool = OutlookMailboxPool(path)
+
+    mailbox = pool.acquire(5)
+
+    assert mailbox["registered_email"] == "owner@outlook.com"
+    assert mailbox["split_index"] == 0
+    pool.release(mailbox, used=True)
+    next_mailbox = pool.acquire(5)
+    assert next_mailbox["registered_email"].startswith("owner+")
+    assert next_mailbox["split_index"] == 3
+    pool.release(next_mailbox)
 
 
 def test_outlook_client_resolves_a_split_address_back_to_its_base_mailbox(tmp_path):
@@ -75,14 +113,32 @@ def test_outlook_client_resolves_a_split_address_back_to_its_base_mailbox(tmp_pa
     client = OutlookMailClient(path, split_limit=5)
     try:
         mailbox = client.create_mailbox()
-        assert re.fullmatch(r"owner\+[0-9a-f]{12}@outlook\.com", mailbox["address"])
-        assert mailbox["split_alias"] in mailbox["address"]
+        assert mailbox["address"] == "owner@outlook.com"
+        assert mailbox["split_alias"] == ""
         resolved = client.existing_mailbox(mailbox["address"])
         assert resolved["base_address"] == "owner@outlook.com"
     finally:
         client.close()
 
-    assert OutlookMailboxPool(path).summary(5)["available_slots"] == 5
+    assert OutlookMailboxPool(path).summary(5)["available_slots"] == 6
+
+
+def test_outlook_client_marks_uncommitted_mailbox_failed(tmp_path):
+    path = tmp_path / "outlook_mailboxes.json"
+    OutlookMailboxPool(path).import_text(
+        "owner@outlook.com----Password123!----client-id----refresh-token"
+    )
+    client = OutlookMailClient(path, split_limit=5)
+    mailbox = client.create_mailbox()
+
+    client.fail_mailbox(mailbox, "split failed")
+    client.close()
+
+    snapshot = OutlookMailboxPool(path).snapshot(5, status="failed")
+    assert snapshot["summary"]["failed"] == 1
+    assert snapshot["summary"]["available_slots"] == 0
+    assert snapshot["items"][0]["email"] == "owner@outlook.com"
+    assert "split failed" in snapshot["items"][0]["last_error"]
 
 
 def test_outlook_pool_repairs_reversed_client_id_and_refresh_token(tmp_path):
@@ -111,9 +167,10 @@ def test_outlook_pool_snapshot_reports_split_and_lease_state(tmp_path):
     snapshot = pool.snapshot(5, status="leased")
 
     assert snapshot["summary"]["leased"] == 1
-    assert snapshot["summary"]["available_slots"] == 4
+    assert snapshot["summary"]["available_slots"] == 5
     assert snapshot["items"][0]["status"] == "leased"
     assert snapshot["items"][0]["leased_splits"] == 1
+    assert snapshot["items"][0]["base_leased"] is True
     assert "password" not in snapshot["items"][0]
     assert "refresh_token" not in snapshot["items"][0]
     pool.release(mailbox)

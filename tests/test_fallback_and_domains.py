@@ -386,13 +386,19 @@ def test_existing_outlook_slot_is_consumed_even_when_otp_login_fails():
 
         def __init__(self):
             self.committed = False
+            self.failed = False
+            self.failed_error = ""
 
         @staticmethod
         def create_mailbox():
-            return {"address": "owner+gpt2@outlook.com"}
+            return {"address": "owner+gpt2@outlook.com", "base_address": "owner@outlook.com", "id": "mailbox-id"}
 
         def commit_mailbox(self, _mailbox):
             self.committed = True
+
+        def fail_mailbox(self, _mailbox, error):
+            self.failed = True
+            self.failed_error = error
 
         @staticmethod
         def close():
@@ -415,6 +421,47 @@ def test_existing_outlook_slot_is_consumed_even_when_otp_login_fails():
         registrar.close()
 
     assert mail.committed is True
+    assert mail.failed is True
+    assert "registration_disallowed" in mail.failed_error
+
+
+def test_transient_outlook_registration_error_does_not_disable_mailbox():
+    registrar = ProtocolRegistrar(registrar_settings())
+
+    class Mail:
+        provider_name = "outlook"
+
+        def __init__(self):
+            self.failed = False
+            self.closed = False
+
+        @staticmethod
+        def create_mailbox():
+            return {"address": "owner@outlook.com", "base_address": "owner@outlook.com", "id": "mailbox-id"}
+
+        def fail_mailbox(self, _mailbox, _error):
+            self.failed = True
+
+        def close(self):
+            self.closed = True
+
+    mail = Mail()
+    registrar._mail_client = lambda *_args, **_kwargs: mail
+    registrar._authorize = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("FlareSolverr 兜底失败: Timeout after 60.0 seconds")
+    )
+    try:
+        try:
+            registrar.register()
+        except RuntimeError as exc:
+            assert "FlareSolverr" in str(exc)
+        else:
+            raise AssertionError("expected transient registration failure")
+    finally:
+        registrar.close()
+
+    assert mail.failed is False
+    assert mail.closed is True
 
 
 def test_otp_send_is_globally_paced():

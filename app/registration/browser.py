@@ -18,7 +18,7 @@ from playwright.sync_api import BrowserContext, Locator, Page, Playwright, sync_
 
 from app.registration.mail import YydsMailClient
 from app.registration.outlook import OutlookMailClient
-from app.registration.protocol import random_password
+from app.registration.protocol import outlook_error_should_disable, random_password
 
 
 LogCallback = Callable[[str, str], None]
@@ -173,6 +173,9 @@ class BrowserRegistrar:
                 proxy=self.proxy,
                 request_timeout=self.timeout_seconds,
                 split_limit=int(self.mail_settings.get("outlook_split_limit") or 5),
+                queue_wait_timeout=max(1800.0, self.mail_timeout * 8, self.timeout_seconds * 20),
+                stopped=self.stop_event.is_set,
+                on_status=self._log,
             )
         options = dict(self.mail_settings)
         options["request_timeout"] = self.timeout_seconds
@@ -705,7 +708,7 @@ class BrowserRegistrar:
         committed = False
         try:
             source = str(getattr(mail, "provider_name", "yyds"))
-            self._log("领取 Outlook 分裂邮箱" if source == "outlook" else "创建临时邮箱")
+            self._log("领取 Outlook 邮箱" if source == "outlook" else "创建临时邮箱")
             mailbox = mail.create_mailbox()
             email = str(mailbox["address"])
             password = random_password()
@@ -713,6 +716,12 @@ class BrowserRegistrar:
             last_name = random.choice(("Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"))
             full_name = f"{first_name} {last_name}"
             birthdate = f"{random.randint(1988, 2001):04d}-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}"
+            if source == "outlook":
+                split_index = int(mailbox.get("split_index") or 0)
+                if split_index == 0:
+                    self._log(f"Outlook 母号就绪：{email}", "success")
+                else:
+                    self._log(f"Outlook 分裂号 #{split_index} 就绪：{email}", "success")
             self._log(f"邮箱就绪：{email}", "success")
 
             page = self._launch()
@@ -723,7 +732,7 @@ class BrowserRegistrar:
             if callable(commit_mailbox):
                 commit_mailbox(mailbox)
                 committed = True
-                self._log("Outlook 分裂邮箱已登记为已使用", "success")
+                self._log("Outlook 邮箱已登记为已使用", "success")
 
             access_token = str(session.get("access_token") or "").strip()
             claims = _jwt_claims(access_token)
@@ -749,9 +758,21 @@ class BrowserRegistrar:
             }
             self._log(f"浏览器注册成功：{email}", "success")
             return result
-        except Exception:
+        except Exception as exc:
             if page is not None:
                 self._save_debug(page)
+            fail_mailbox = getattr(mail, "fail_mailbox", None)
+            if mailbox is not None and callable(fail_mailbox) and outlook_error_should_disable(exc):
+                fail_mailbox(mailbox, str(exc))
+                self._log(
+                    f"Outlook 母号已标记失效，后续不再注册：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",
+                    "warning",
+                )
+            elif mailbox is not None and getattr(mail, "provider_name", "") == "outlook":
+                self._log(
+                    f"Outlook 母号本次失败为环境/中断类，释放回号池：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",
+                    "warning",
+                )
             raise
         finally:
             if mailbox is not None and committed:

@@ -71,6 +71,40 @@ class ExistingAccountRouteError(RuntimeError):
     pass
 
 
+def outlook_error_requires_disable(error: BaseException | str) -> bool:
+    text = str(error or "").lower()
+    return "registration_disallowed" in text or "拒绝创建账号资料" in text
+
+
+def outlook_error_is_transient(error: BaseException | str) -> bool:
+    text = str(error or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "任务已停止",
+            "cloudflare",
+            "flaresolverr",
+            "challenge",
+            "tls connect error",
+            "curl: (35)",
+            "openssl_internal",
+            "err_proxy_connection_failed",
+            "err_timed_out",
+            "timeout after",
+            "母号正在注册",
+            "队列等待",
+        )
+    )
+
+
+def outlook_error_should_disable(error: BaseException | str) -> bool:
+    if outlook_error_requires_disable(error):
+        return True
+    if outlook_error_is_transient(error):
+        return False
+    return True
+
+
 _TLS_TRANSPORT_MARKERS = (
     "curl: (35)",
     "tls connect error",
@@ -304,6 +338,13 @@ class ProtocolRegistrar:
                 proxy=self.proxy,
                 request_timeout=self.timeout,
                 split_limit=int(self.mail_settings.get("outlook_split_limit") or 5),
+                queue_wait_timeout=max(
+                    1800.0,
+                    float(self.registration.get("mail_wait_timeout") or 120) * 8,
+                    self.timeout * 20,
+                ),
+                stopped=self.stop_event.is_set,
+                on_status=self._log,
             )
         mail_options = dict(self.mail_settings)
         mail_options["request_timeout"] = self.timeout
@@ -1067,11 +1108,19 @@ class ProtocolRegistrar:
     def register(self) -> dict[str, Any]:
         self._check_stopped()
         mail = self._mail_client()
+        mailbox: dict[str, Any] | None = None
+        mailbox_committed = False
         try:
             source = str(getattr(mail, "provider_name", "yyds"))
-            self._log("领取 Outlook 分裂邮箱" if source == "outlook" else "创建临时邮箱")
+            self._log("领取 Outlook 邮箱" if source == "outlook" else "创建临时邮箱")
             mailbox = mail.create_mailbox()
             email = mailbox["address"]
+            if source == "outlook":
+                split_index = int(mailbox.get("split_index") or 0)
+                if split_index == 0:
+                    self._log(f"Outlook 母号就绪: {email}", "success")
+                else:
+                    self._log(f"Outlook 分裂号 #{split_index} 就绪: {email}", "success")
             self._log(f"邮箱就绪: {email}", "success")
             password = random_password()
             first_name = random.choice(("James", "Robert", "John", "Michael", "David", "Mary", "Emma", "Olivia"))
@@ -1083,7 +1132,6 @@ class ProtocolRegistrar:
             route = _authorization_route(final_url)
             registration_mode = "signup"
             account_password = password
-            mailbox_committed = False
             if route == "existing":
                 if source != "outlook":
                     raise ExistingAccountRouteError(f"邮箱已存在，OAuth 已进入登录步骤: {email}")
@@ -1108,7 +1156,8 @@ class ProtocolRegistrar:
             commit_mailbox = getattr(mail, "commit_mailbox", None)
             if callable(commit_mailbox) and not mailbox_committed:
                 commit_mailbox(mailbox)
-                self._log("Outlook 分裂邮箱已登记为已使用", "success")
+                mailbox_committed = True
+                self._log("Outlook 邮箱已登记为已使用", "success")
             access_token = str(tokens.get("access_token") or "").strip()
             refresh_token = str(tokens.get("refresh_token") or "").strip()
             id_token = str(tokens.get("id_token") or "").strip()
@@ -1131,5 +1180,19 @@ class ProtocolRegistrar:
             success_label = "已有账号登录成功" if registration_mode == "existing_otp" else "注册成功"
             self._log(f"{success_label}: {email}", "success")
             return result
+        except Exception as exc:
+            fail_mailbox = getattr(mail, "fail_mailbox", None)
+            if mailbox is not None and callable(fail_mailbox) and outlook_error_should_disable(exc):
+                fail_mailbox(mailbox, str(exc))
+                self._log(
+                    f"Outlook 母号已标记失效，后续不再注册：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",
+                    "warning",
+                )
+            elif mailbox is not None and getattr(mail, "provider_name", "") == "outlook":
+                self._log(
+                    f"Outlook 母号本次失败为环境/中断类，释放回号池：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",
+                    "warning",
+                )
+            raise
         finally:
             mail.close()

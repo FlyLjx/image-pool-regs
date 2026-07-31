@@ -66,7 +66,6 @@
     <aside class="sidebar">
       <nav class="side-nav" aria-label="主导航">
         <button class="nav-item active" type="button" data-page="register"><i class="ti ti-user-plus"></i><span>注册任务</span></button>
-        <button class="nav-item" type="button" data-page="accounts"><i class="ti ti-database"></i><span>账号数据</span><em id="sideAccountCount">0</em></button>
         <button class="nav-item" type="button" data-page="outlook-pool"><i class="ti ti-brand-windows"></i><span>Outlook 号池</span><em id="sideOutlookSlotCount">0</em></button>
         <button class="nav-item" type="button" data-page="settings"><i class="ti ti-settings"></i><span>系统设置</span></button>
       </nav>
@@ -135,7 +134,7 @@
         </div>
       </section>
 
-      <section id="page-accounts" class="page">
+      <section id="page-accounts" class="page" hidden>
         <header class="page-header">
           <div><span class="page-kicker">ACCOUNT DATA</span><h1>账号数据</h1></div>
           <div class="header-actions">
@@ -215,7 +214,7 @@
 
         <div class="stats-grid outlook-pool-stats">
           <article class="stat-block green"><span><i class="ti ti-mail"></i>基础邮箱</span><strong id="outlookStatTotal">0</strong><small>已导入</small></article>
-          <article class="stat-block blue"><span><i class="ti ti-box-multiple"></i>可用分裂</span><strong id="outlookStatSlots">0</strong><small id="outlookStatSplitLimit">每号 5 个</small></article>
+          <article class="stat-block blue"><span><i class="ti ti-box-multiple"></i>可用注册</span><strong id="outlookStatSlots">0</strong><small id="outlookStatSplitLimit">母号 + 5 分裂</small></article>
           <article class="stat-block amber"><span><i class="ti ti-clock-play"></i>租用 / 已用</span><strong id="outlookStatOccupied">0</strong><small id="outlookStatOccupiedMeta">租用 0 · 已用 0</small></article>
           <article class="stat-block red"><span><i class="ti ti-alert-circle"></i>异常邮箱</span><strong id="outlookStatFailed">0</strong><small>等待更新凭据</small></article>
         </div>
@@ -239,7 +238,7 @@
             </div>
             <div class="table-wrap outlook-pool-table-wrap">
               <table class="outlook-pool-table">
-                <thead><tr><th class="outlook-select-cell"><input id="outlookPoolSelectPage" type="checkbox" title="选择当前页" aria-label="选择当前页"></th><th>基础邮箱</th><th>状态</th><th>分裂占用</th><th>可用</th><th>Client ID</th><th>更新时间 / 错误</th></tr></thead>
+                <thead><tr><th class="outlook-select-cell"><input id="outlookPoolSelectPage" type="checkbox" title="选择当前页" aria-label="选择当前页"></th><th>基础邮箱</th><th>状态</th><th>占用</th><th>可用</th><th>添加时间</th><th>Client ID</th><th>更新时间 / 错误</th></tr></thead>
                 <tbody id="outlookPoolBody"></tbody>
               </table>
               <div id="outlookPoolEmpty" class="empty-state"><i class="ti ti-mail-off"></i><strong>暂无 Outlook 邮箱</strong></div>
@@ -370,13 +369,12 @@
 
     <nav class="bottom-nav" aria-label="移动端导航">
       <button class="active" type="button" data-page="register"><i class="ti ti-user-plus"></i><span>注册</span></button>
-      <button type="button" data-page="accounts"><i class="ti ti-database"></i><span>账号</span></button>
       <button type="button" data-page="outlook-pool"><i class="ti ti-brand-windows"></i><span>号池</span></button>
       <button type="button" data-page="settings"><i class="ti ti-settings"></i><span>设置</span></button>
     </nav>
   </div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-  <script src="/app.js?v=20260730-3" defer></script>
+  <script src="/app.js?v=20260731-outlook-mother-first-1" defer></script>
 </body>
 </html>

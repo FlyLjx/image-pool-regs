@@ -89,19 +89,67 @@ class OutlookMailboxPool:
                 temporary.unlink(missing_ok=True)
 
     @staticmethod
-    def _summary(entries: list[dict[str, Any]], split_limit: int = 5) -> dict[str, int]:
+    def _base_registered(item: dict[str, Any]) -> bool:
+        return bool(str(item.get("base_registered_at") or "").strip() or item.get("base_registered") is True)
+
+    @staticmethod
+    def _lease_data(item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        leases = item.get("split_leases") if isinstance(item.get("split_leases"), dict) else {}
+        aliases = item.get("split_lease_aliases") if isinstance(item.get("split_lease_aliases"), dict) else {}
+        return leases, aliases
+
+    @classmethod
+    def _base_leased(cls, item: dict[str, Any]) -> bool:
+        leases, aliases = cls._lease_data(item)
+        for lease_id, value in leases.items():
+            if not str(value).lstrip("-").isdigit():
+                continue
+            slot = int(value)
+            alias = str(aliases.get(lease_id) or "").strip()
+            if slot == 0 or not alias:
+                return True
+        return False
+
+    @classmethod
+    def _alias_lease_slots(cls, item: dict[str, Any]) -> set[int]:
+        leases, aliases = cls._lease_data(item)
+        slots: set[int] = set()
+        for lease_id, value in leases.items():
+            if not str(value).lstrip("-").isdigit():
+                continue
+            slot = int(value)
+            alias = str(aliases.get(lease_id) or "").strip()
+            if slot > 0 and alias:
+                slots.add(slot)
+        return slots
+
+    @staticmethod
+    def _used_alias_slots(item: dict[str, Any]) -> set[int]:
+        return {int(value) for value in item.get("used_split_slots", []) if str(value).isdigit() and int(value) > 0}
+
+    @classmethod
+    def _occupied_registration_count(cls, item: dict[str, Any]) -> int:
+        return len(cls._used_alias_slots(item)) + len(cls._alias_lease_slots(item)) + (1 if cls._base_registered(item) or cls._base_leased(item) else 0)
+
+    @classmethod
+    def _summary(cls, entries: list[dict[str, Any]], split_limit: int = 5) -> dict[str, int]:
         summary = {
             "total": len(entries), "available": 0, "leased": 0, "used": 0, "failed": 0,
             "split_limit": max(1, int(split_limit or 5)), "available_slots": 0,
         }
         for item in entries:
-            leases = item.get("split_leases") if isinstance(item.get("split_leases"), dict) else {}
+            alias_lease_slots = cls._alias_lease_slots(item)
+            base_leased = cls._base_leased(item)
             stored_status = str(item.get("status") or "available")
-            status = "leased" if stored_status == "available" and leases else stored_status
+            status = "leased" if stored_status == "available" and (alias_lease_slots or base_leased) else stored_status
             summary[status if status in summary else "available"] += 1
             if stored_status == "available":
-                used_slots = item.get("used_split_slots") if isinstance(item.get("used_split_slots"), list) else []
-                summary["available_slots"] += max(0, summary["split_limit"] - len(set(used_slots)) - len(leases))
+                used_alias_slots = cls._used_alias_slots(item)
+                base_available = 0 if cls._base_registered(item) or base_leased else 1
+                summary["available_slots"] += base_available + max(
+                    0,
+                    summary["split_limit"] - len(used_alias_slots) - len(alias_lease_slots),
+                )
         return summary
 
     def summary(self, split_limit: int = 5) -> dict[str, int]:
@@ -129,13 +177,12 @@ class OutlookMailboxPool:
             summary = self._summary(entries, limit)
             items: list[dict[str, Any]] = []
             for item in entries:
-                used_slots = sorted({
-                    int(value) for value in item.get("used_split_slots", []) if str(value).isdigit()
-                })
-                leases = item.get("split_leases") if isinstance(item.get("split_leases"), dict) else {}
-                leased_slots = sorted({int(value) for value in leases.values() if str(value).isdigit()})
+                used_slots = sorted(self._used_alias_slots(item))
+                leased_slots = sorted(self._alias_lease_slots(item))
+                base_used = self._base_registered(item)
+                base_leased = self._base_leased(item)
                 stored_status = str(item.get("status") or "available")
-                display_status = "leased" if stored_status == "available" and leased_slots else stored_status
+                display_status = "leased" if stored_status == "available" and (leased_slots or base_leased) else stored_status
                 email = str(item.get("email") or "")
                 client_id = str(item.get("client_id") or "")
                 if search and search not in f"{email} {client_id} {item.get('last_error') or ''}".lower():
@@ -147,9 +194,14 @@ class OutlookMailboxPool:
                     "email": email,
                     "client_id": client_id,
                     "status": display_status,
-                    "used_splits": len(used_slots),
-                    "leased_splits": len(leased_slots),
-                    "available_splits": max(0, limit - len(used_slots) - len(leased_slots)) if stored_status == "available" else 0,
+                    "base_used": base_used,
+                    "base_leased": base_leased,
+                    "used_splits": len(used_slots) + (1 if base_used else 0),
+                    "leased_splits": len(leased_slots) + (1 if base_leased else 0),
+                    "available_splits": (
+                        (0 if base_used or base_leased else 1)
+                        + max(0, limit - len(used_slots) - len(leased_slots))
+                    ) if stored_status == "available" else 0,
                     "split_limit": limit,
                     "used_split_slots": used_slots,
                     "leased_split_slots": leased_slots,
@@ -158,7 +210,9 @@ class OutlookMailboxPool:
                     "updated_at": str(item.get("updated_at") or ""),
                     "imported_at": str(item.get("imported_at") or ""),
                 })
-            items.sort(key=lambda value: (value["updated_at"], value["email"]), reverse=True)
+            # Keep the UI in mailbox add/import order. Runtime updates such as
+            # leasing, failed checks, or token refresh should not move rows around.
+            items.sort(key=lambda value: (value["imported_at"] or value["updated_at"], value["email"]))
             total = len(items)
             pages = max(1, (total + requested_size - 1) // requested_size)
             current_page = min(requested_page, pages)
@@ -280,57 +334,105 @@ class OutlookMailboxPool:
                 return tag
         raise RuntimeError("Outlook 随机分裂标签生成失败")
 
-    def acquire(self, split_limit: int = 5) -> dict[str, Any]:
+    @classmethod
+    def _next_lease_target(cls, entries: list[dict[str, Any]], limit: int) -> tuple[dict[str, Any] | None, int, bool]:
+        """Return the next mailbox/slot in strict import order.
+
+        Slot 1 is the base mailbox itself. Later slots are plus-address aliases.
+        If the first usable mailbox is already leased, callers should wait
+        instead of moving to the next mailbox, so one base mailbox is exhausted
+        before the next one starts.
+        """
+        for item in entries:
+            if item.get("status") != "available":
+                continue
+            used_slots = cls._used_alias_slots(item)
+            alias_lease_slots = cls._alias_lease_slots(item)
+            base_leased = cls._base_leased(item)
+            # Mother/base mailbox is independent from split slots. Old data may
+            # already contain used_split_slots=[1,2] from previous alias-only
+            # behavior; without base_registered_at it must still start with the
+            # real mother address.
+            if not cls._base_registered(item):
+                if base_leased:
+                    return None, 0, True
+                if not alias_lease_slots:
+                    return item, 0, False
+                return None, 0, True
+            if len(used_slots) >= limit:
+                continue
+            if alias_lease_slots:
+                return None, 0, True
+            if 1 not in used_slots:
+                return item, 1, False
+            next_slot = next((slot for slot in range(2, limit + 1) if slot not in used_slots), 0)
+            if next_slot:
+                return item, next_slot, False
+        return None, 0, False
+
+    def acquire(
+        self,
+        split_limit: int = 5,
+        *,
+        wait_timeout: float = 0.0,
+        stopped: Callable[[], bool] | None = None,
+        on_status: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         limit = max(1, min(50, int(split_limit or 5)))
-        with self._lock:
-            entries = self._read_unlocked()
-            candidates = []
-            for item in entries:
-                if item.get("status") != "available":
-                    continue
-                used_slots = {int(value) for value in item.get("used_split_slots", []) if str(value).isdigit()}
-                leases = item.get("split_leases") if isinstance(item.get("split_leases"), dict) else {}
-                leased_slots = {int(value) for value in leases.values() if str(value).isdigit()}
-                next_slot = next((slot for slot in range(1, limit + 1) if slot not in used_slots and slot not in leased_slots), 0)
-                if next_slot:
-                    candidates.append((item, next_slot))
-            if not candidates:
+        deadline = time.monotonic() + max(0.0, float(wait_timeout or 0.0))
+        waiting_for_current = False
+        last_status_at = 0.0
+        while True:
+            if stopped and stopped():
+                raise RuntimeError("任务已停止")
+            with self._lock:
+                entries = self._read_unlocked()
+                chosen, split_index, waiting_for_current = self._next_lease_target(entries, limit)
+                if chosen is not None:
+                    lease_id = uuid.uuid4().hex
+                    leases = chosen.get("split_leases") if isinstance(chosen.get("split_leases"), dict) else {}
+                    lease_aliases = (
+                        chosen.get("split_lease_aliases")
+                        if isinstance(chosen.get("split_lease_aliases"), dict)
+                        else {}
+                    )
+                    used_aliases = (
+                        chosen.get("used_split_aliases")
+                        if isinstance(chosen.get("used_split_aliases"), dict)
+                        else {}
+                    )
+                    existing_aliases = {
+                        str(value).strip().lower()
+                        for value in (*lease_aliases.values(), *used_aliases.values())
+                        if str(value).strip()
+                    }
+                    split_alias = "" if split_index == 0 else self._random_alias_tag(existing_aliases)
+                    leases[lease_id] = split_index
+                    lease_aliases[lease_id] = split_alias
+                    chosen["split_leases"] = leases
+                    chosen["split_lease_aliases"] = lease_aliases
+                    chosen["last_leased_at"] = _now()
+                    chosen["updated_at"] = _now()
+                    self._write_unlocked(entries)
+                    assigned = copy.deepcopy(chosen)
+                    assigned["lease_id"] = lease_id
+                    assigned["split_index"] = split_index
+                    assigned["split_alias"] = split_alias
+                    assigned["registered_email"] = (
+                        str(chosen["email"]) if split_index == 0 else self._alias(str(chosen["email"]), split_alias)
+                    )
+                    return assigned
+            if not waiting_for_current:
                 raise RuntimeError(f"Outlook 邮箱池没有可用分裂邮箱（每个基础邮箱上限 {limit} 个）")
-            # Preserve import order and exhaust each base mailbox before moving
-            # to the next one. The pool lock keeps concurrent workers on
-            # distinct split slots of the same mailbox.
-            chosen, split_index = candidates[0]
-            lease_id = uuid.uuid4().hex
-            leases = chosen.get("split_leases") if isinstance(chosen.get("split_leases"), dict) else {}
-            lease_aliases = (
-                chosen.get("split_lease_aliases")
-                if isinstance(chosen.get("split_lease_aliases"), dict)
-                else {}
-            )
-            used_aliases = (
-                chosen.get("used_split_aliases")
-                if isinstance(chosen.get("used_split_aliases"), dict)
-                else {}
-            )
-            existing_aliases = {
-                str(value).strip().lower()
-                for value in (*lease_aliases.values(), *used_aliases.values())
-                if str(value).strip()
-            }
-            split_alias = self._random_alias_tag(existing_aliases)
-            leases[lease_id] = split_index
-            lease_aliases[lease_id] = split_alias
-            chosen["split_leases"] = leases
-            chosen["split_lease_aliases"] = lease_aliases
-            chosen["last_leased_at"] = _now()
-            chosen["updated_at"] = _now()
-            self._write_unlocked(entries)
-            assigned = copy.deepcopy(chosen)
-            assigned["lease_id"] = lease_id
-            assigned["split_index"] = split_index
-            assigned["split_alias"] = split_alias
-            assigned["registered_email"] = self._alias(str(chosen["email"]), split_alias)
-            return assigned
+            now = time.monotonic()
+            if on_status and (last_status_at <= 0 or now - last_status_at >= 15.0):
+                last_status_at = now
+                on_status("Outlook 母号顺序队列等待中：当前母号还在注册，完成后继续领取下一个地址")
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Outlook 母号正在注册，顺序队列等待超时")
+            if stopped and stopped():
+                raise RuntimeError("任务已停止")
+            time.sleep(1.0)
 
     def find(self, email: str) -> dict[str, Any]:
         target = str(email or "").strip().lower()
@@ -360,7 +462,11 @@ class OutlookMailboxPool:
                 )
                 split_index = int(leases.pop(lease_id, mailbox.get("split_index") or 0) or 0)
                 split_alias = str(lease_aliases.pop(lease_id, mailbox.get("split_alias") or "") or "").strip()
-                if used and split_index:
+                if used and (split_index == 0 or not split_alias):
+                    item["base_registered"] = True
+                    item["base_registered_at"] = _now()
+                    item["base_registered_email"] = str(item.get("email") or mailbox.get("address") or "")
+                elif used and split_index > 0:
                     used_slots = {int(value) for value in item.get("used_split_slots", []) if str(value).isdigit()}
                     used_slots.add(split_index)
                     item["used_split_slots"] = sorted(used_slots)
@@ -381,6 +487,22 @@ class OutlookMailboxPool:
                 item["updated_at"] = _now()
                 self._write_unlocked(entries)
                 return
+
+    def clear_leases(self) -> int:
+        cleared = 0
+        with self._lock:
+            entries = self._read_unlocked()
+            for item in entries:
+                leases = item.get("split_leases") if isinstance(item.get("split_leases"), dict) else {}
+                lease_aliases = item.get("split_lease_aliases") if isinstance(item.get("split_lease_aliases"), dict) else {}
+                if leases or lease_aliases:
+                    item["split_leases"] = {}
+                    item["split_lease_aliases"] = {}
+                    item["updated_at"] = _now()
+                    cleared += 1
+            if cleared:
+                self._write_unlocked(entries)
+        return cleared
 
     def mark_failed(self, mailbox: dict[str, Any], error: str) -> None:
         identifier = str(mailbox.get("id") or "").strip()
@@ -417,10 +539,23 @@ class OutlookMailboxPool:
 class OutlookMailClient:
     provider_name = "outlook"
 
-    def __init__(self, pool_path: str | Path, *, proxy: str = "", request_timeout: float = 30, split_limit: int = 5) -> None:
+    def __init__(
+        self,
+        pool_path: str | Path,
+        *,
+        proxy: str = "",
+        request_timeout: float = 30,
+        split_limit: int = 5,
+        queue_wait_timeout: float = 1800,
+        stopped: Callable[[], bool] | None = None,
+        on_status: Callable[[str], None] | None = None,
+    ) -> None:
         self.pool = OutlookMailboxPool(pool_path)
         self.request_timeout = max(10.0, float(request_timeout or 30))
         self.split_limit = max(1, min(50, int(split_limit or 5)))
+        self.queue_wait_timeout = max(300.0, float(queue_wait_timeout or 1800))
+        self.stopped = stopped
+        self.on_status = on_status
         options: dict[str, Any] = {"impersonate": "chrome", "verify": False}
         if proxy:
             options["proxy"] = proxy
@@ -450,7 +585,12 @@ class OutlookMailClient:
         }
 
     def create_mailbox(self, _domain: str | None = None, _local_part: str | None = None) -> dict[str, Any]:
-        self._leased = self.pool.acquire(self.split_limit)
+        self._leased = self.pool.acquire(
+            self.split_limit,
+            wait_timeout=self.queue_wait_timeout,
+            stopped=self.stopped,
+            on_status=self.on_status,
+        )
         self._leased["split_limit"] = self.split_limit
         return self._mailbox(self._leased)
 
@@ -464,6 +604,11 @@ class OutlookMailClient:
             return
         self.pool.release(mailbox, used=True)
         self._leased = None
+
+    def fail_mailbox(self, mailbox: dict[str, Any], error: str) -> None:
+        self.pool.mark_failed(mailbox, error)
+        if self._leased is not None and str(self._leased.get("id") or "") == str(mailbox.get("id") or ""):
+            self._leased = None
 
     def _access_token(
         self,
