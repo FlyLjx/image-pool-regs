@@ -5,7 +5,9 @@ import re
 
 import pytest
 
-from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
+from app.registration import outlook as outlook_module
+from app.registration.outlook import OutlookMailboxPool, OutlookMailClient, OutlookOtpPollLimitError
+from app.registration.protocol import outlook_error_should_disable
 from app.registration.mail import extract_otp
 
 
@@ -328,3 +330,30 @@ def test_outlook_marks_disconnected_imap_mailbox_failed():
         raise AssertionError("expected disconnected IMAP failure")
 
     assert marked and marked[0][0] is mailbox
+
+
+def test_outlook_wait_for_code_switches_mailbox_after_poll_limit(monkeypatch):
+    client = object.__new__(OutlookMailClient)
+    calls = []
+    statuses = []
+
+    def messages(_mailbox):
+        calls.append(1)
+        return [{"id": f"mail-{len(calls)}", "subject": "hello", "receivedDateTime": ""}]
+
+    client._messages = messages
+    monkeypatch.setattr(outlook_module.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(OutlookOtpPollLimitError, match="3 次仍未收到新验证码") as caught:
+        client.wait_for_code(
+            {"address": "owner@outlook.com"},
+            requested_at=0,
+            timeout=120,
+            interval=0.01,
+            on_status=statuses.append,
+            max_polls=3,
+        )
+
+    assert len(calls) == 3
+    assert statuses[-1] == "Outlook 邮箱轮询已达 3 次仍未收到新验证码，当前母号标记失效并切换下一个号"
+    assert outlook_error_should_disable(caught.value) is True

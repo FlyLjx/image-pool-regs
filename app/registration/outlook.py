@@ -24,6 +24,11 @@ GRAPH_DEFAULT_SCOPE = "https://graph.microsoft.com/.default"
 MICROSOFT_COMMON_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_CONSUMERS_TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
 VALID_POOL_STATUSES = {"available", "leased", "used", "failed"}
+MAX_OUTLOOK_OTP_POLLS = 10
+
+
+class OutlookOtpPollLimitError(RuntimeError):
+    pass
 
 
 def _now() -> str:
@@ -837,8 +842,10 @@ class OutlookMailClient:
         stopped: Callable[[], bool] | None = None,
         excluded_codes: set[str] | None = None,
         on_status: Callable[[str], None] | None = None,
+        max_polls: int | None = MAX_OUTLOOK_OTP_POLLS,
     ) -> str | None:
         deadline = time.monotonic() + max(10.0, timeout)
+        poll_limit = max(1, int(max_polls)) if max_polls is not None else 0
         seen: set[str] = set()
         excluded = {str(code).strip() for code in (excluded_codes or set()) if str(code).strip()}
         poll_count = 0
@@ -860,7 +867,16 @@ class OutlookMailClient:
                 if code and code not in excluded:
                     return code
             now = time.monotonic()
-            if on_status and (poll_count == 1 or now - last_status_at >= 15.0):
+            should_report = poll_count == 1 or now - last_status_at >= 15.0
+            if poll_limit and poll_count >= poll_limit:
+                message = (
+                    f"Outlook 邮箱轮询已达 {poll_limit} 次仍未收到新验证码，"
+                    "当前母号标记失效并切换下一个号"
+                )
+                if on_status:
+                    on_status(message)
+                raise OutlookOtpPollLimitError(message)
+            if on_status and should_report:
                 last_status_at = now
                 on_status(f"Outlook 邮箱轮询第 {poll_count} 次：读取到 {len(messages)} 封邮件，尚未发现新的验证码")
             time.sleep(max(0.5, interval))

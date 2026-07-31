@@ -73,7 +73,15 @@ class ExistingAccountRouteError(RuntimeError):
 
 def outlook_error_requires_disable(error: BaseException | str) -> bool:
     text = str(error or "").lower()
-    return "registration_disallowed" in text or "拒绝创建账号资料" in text
+    return any(
+        marker in text
+        for marker in (
+            "registration_disallowed",
+            "拒绝创建账号资料",
+            "outlook 邮箱轮询已达",
+            "仍未收到新验证码",
+        )
+    )
 
 
 def outlook_error_is_transient(error: BaseException | str) -> bool:
