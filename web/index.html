@@ -67,6 +67,7 @@
       <nav class="side-nav" aria-label="主导航">
         <button class="nav-item active" type="button" data-page="register"><i class="ti ti-user-plus"></i><span>注册任务</span></button>
         <button class="nav-item" type="button" data-page="outlook-pool"><i class="ti ti-brand-windows"></i><span>Outlook 号池</span><em id="sideOutlookSlotCount">0</em></button>
+        <button class="nav-item" type="button" data-page="outlook-mails"><i class="ti ti-mail"></i><span>Outlook 邮箱</span><em id="sideOutlookMailCount">0</em></button>
         <button class="nav-item" type="button" data-page="settings"><i class="ti ti-settings"></i><span>系统设置</span></button>
       </nav>
       <div class="sidebar-meta">
@@ -271,6 +272,51 @@
         </div>
       </section>
 
+      <section id="page-outlook-mails" class="page">
+        <header class="page-header">
+          <div><span class="page-kicker">OUTLOOK MAILBOXES</span><h1>Outlook 邮箱列表</h1></div>
+          <div class="header-actions">
+            <button id="refreshOutlookMailCountsButton" class="button secondary" type="button"><i class="ti ti-mail-check"></i><span>刷新邮件数</span></button>
+            <button id="exportOutlookMailsButton" class="button primary" type="button"><i class="ti ti-file-download"></i><span>导出 TXT</span></button>
+            <button id="reloadOutlookMailsButton" class="button secondary" type="button"><i class="ti ti-refresh"></i><span>刷新</span></button>
+          </div>
+        </header>
+        <div class="stats-grid outlook-mail-stats">
+          <article class="stat-block green"><span><i class="ti ti-mail"></i>Outlook 邮箱</span><strong id="outlookMailStatTotal">0</strong><small>全部基础邮箱</small></article>
+          <article class="stat-block blue"><span><i class="ti ti-mail-opened"></i>邮件总数</span><strong id="outlookMailStatMessages">0</strong><small id="outlookMailStatChecked">已统计 0 个</small></article>
+          <article class="stat-block amber"><span><i class="ti ti-calendar-plus"></i>今日 API 导入</span><strong id="outlookMailStatToday">0</strong><small id="outlookMailStatTodayMeta">新增邮箱</small></article>
+          <article class="stat-block red"><span><i class="ti ti-chart-histogram"></i>近 7 天导入</span><strong id="outlookMailStatWeek">0</strong><small>API 新增邮箱</small></article>
+        </div>
+        <div class="outlook-mail-layout">
+          <section class="panel outlook-mail-panel">
+            <header class="panel-head"><div><i class="ti ti-list-details"></i><span><strong>全部 Outlook 邮箱</strong><small id="outlookMailListMeta">0 个邮箱</small></span></div></header>
+            <div class="account-tools outlook-mail-tools">
+              <label class="account-search" for="outlookMailSearch"><i class="ti ti-search"></i><input id="outlookMailSearch" type="search" maxlength="200" placeholder="搜索邮箱或错误信息" autocomplete="off"><button id="outlookMailSearchClear" type="button" title="清空搜索" aria-label="清空搜索" hidden><i class="ti ti-x"></i></button></label>
+              <div id="outlookMailCategories" class="account-categories" role="tablist" aria-label="Outlook 邮箱状态分类">
+                <button class="active" type="button" role="tab" data-outlook-mail-status="all" aria-selected="true"><span>全部</span></button>
+                <button type="button" role="tab" data-outlook-mail-status="available" aria-selected="false"><span>可用</span></button>
+                <button type="button" role="tab" data-outlook-mail-status="failed" aria-selected="false"><span>异常</span></button>
+              </div>
+            </div>
+            <div class="table-wrap outlook-mail-table-wrap">
+              <table class="outlook-mail-table">
+                <thead><tr><th>邮箱</th><th>状态</th><th>邮件数</th><th>添加时间</th><th>统计时间</th><th>备注</th></tr></thead>
+                <tbody id="outlookMailBody"></tbody>
+              </table>
+              <div id="outlookMailEmpty" class="empty-state"><i class="ti ti-mail-off"></i><strong>暂无 Outlook 邮箱</strong></div>
+            </div>
+            <footer id="outlookMailPagination" class="pagination-bar"><div class="pagination-info"><strong id="outlookMailPageSummary">第 1 / 1 页</strong><span id="outlookMailRangeSummary">暂无邮箱</span></div><div class="pagination-controls"><label class="page-size-control" for="outlookMailPageSize"><span>每页</span><span class="page-size-select"><select id="outlookMailPageSize"><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select><i class="ti ti-chevron-down"></i></span></label><nav class="pagination-nav" aria-label="Outlook 邮箱分页"><button id="outlookMailPrevPage" class="pagination-button" type="button" title="上一页" aria-label="上一页"><i class="ti ti-chevron-left"></i></button><span id="outlookMailPageNumbers" class="pagination-pages"></span><button id="outlookMailNextPage" class="pagination-button" type="button" title="下一页" aria-label="下一页"><i class="ti ti-chevron-right"></i></button></nav></div></footer>
+          </section>
+          <aside class="outlook-mail-aside">
+            <section class="panel">
+              <header class="panel-head"><div><i class="ti ti-calendar-stats"></i><span><strong>每日 API 导入</strong><small>按 UTC 日期统计</small></span></div></header>
+              <div id="outlookMailImportStats" class="outlook-mail-import-stats"><div class="log-empty"><i class="ti ti-chart-bar"></i><span>暂无导入记录</span></div></div>
+            </section>
+            <section class="panel outlook-mail-note"><header class="panel-head"><div><i class="ti ti-info-circle"></i><span><strong>管理说明</strong><small>邮箱列表与号池共用数据</small></span></div></header><p>刷新邮件数会通过 Microsoft Graph 读取收件箱总数。导出 TXT 默认包含完整凭据、状态和邮件数；需要直接回灌号池时可使用 raw 格式。</p></section>
+          </aside>
+        </div>
+      </section>
+
       <section id="page-settings" class="page">
         <header class="page-header">
           <div><span class="page-kicker">SETTINGS</span><h1>系统设置</h1></div>
@@ -370,11 +416,12 @@
     <nav class="bottom-nav" aria-label="移动端导航">
       <button class="active" type="button" data-page="register"><i class="ti ti-user-plus"></i><span>注册</span></button>
       <button type="button" data-page="outlook-pool"><i class="ti ti-brand-windows"></i><span>号池</span></button>
+      <button type="button" data-page="outlook-mails"><i class="ti ti-mail"></i><span>邮箱</span></button>
       <button type="button" data-page="settings"><i class="ti ti-settings"></i><span>设置</span></button>
     </nav>
   </div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-  <script src="/app.js?v=20260731-outlook-mother-first-1" defer></script>
+  <script src="/app.js?v=20260802-outlook-mailbox-list-1" defer></script>
 </body>
 </html>

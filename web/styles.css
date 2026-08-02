@@ -327,6 +327,29 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
 .outlook-api-key-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px 36px; gap: 6px; }
 .outlook-api-key-row > input { min-width: 0; font-family: "Cascadia Mono", Consolas, monospace; font-size: 10px; }
 .outlook-api-key-row .icon-button { height: 40px; }
+.outlook-mail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 12px; }
+.outlook-mail-panel { min-width: 0; overflow: hidden; }
+.outlook-mail-tools { grid-template-columns: minmax(210px, 290px) minmax(0, 1fr); }
+.outlook-mail-table-wrap { min-height: 360px; }
+.outlook-mail-table th:nth-child(1) { width: 30%; }
+.outlook-mail-table th:nth-child(2) { width: 12%; }
+.outlook-mail-table th:nth-child(3) { width: 12%; }
+.outlook-mail-table th:nth-child(4) { width: 18%; }
+.outlook-mail-table th:nth-child(5) { width: 18%; }
+.outlook-mail-table th:nth-child(6) { width: 20%; }
+.outlook-mail-table td.email-cell { max-width: 0; }
+.outlook-mail-table td.email-cell > span, .outlook-mail-table td.mail-note-cell > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outlook-mail-count { color: var(--blue); font-size: 14px; font-weight: 800; }
+.outlook-mail-count.pending { color: var(--subtle); font-size: 10px; font-weight: 600; }
+.outlook-mail-time { color: var(--muted); font-size: 10px; }
+.outlook-mail-table td.mail-note-cell > span.error { color: var(--red); }
+.outlook-mail-note p { margin: 0; padding: 14px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.outlook-mail-aside { display: grid; gap: 12px; }
+.outlook-mail-import-stats { display: grid; gap: 7px; padding: 12px; }
+.outlook-mail-import-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--soft); font-size: 10px; }
+.outlook-mail-import-row strong { color: var(--text); font-size: 11px; }
+.outlook-mail-import-row span { color: var(--muted); }
+.outlook-mail-import-row b { color: var(--green); font-size: 11px; }
 
 .settings-layout { display: grid; grid-template-columns: minmax(520px, 1fr) 280px; align-items: start; gap: 12px; }
 .settings-main { display: grid; gap: 12px; }
@@ -365,6 +388,8 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
   .settings-aside { grid-template-columns: 1fr 1fr; }
   .outlook-pool-layout { grid-template-columns: 1fr; }
   .outlook-pool-aside { grid-template-columns: 1fr 1fr; }
+  .outlook-mail-layout { grid-template-columns: 1fr; }
+  .outlook-mail-aside { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 720px) {
@@ -395,7 +420,7 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
   .log-row { grid-template-columns: 50px 38px minmax(0, 1fr); gap: 5px; font-size: 10px; }
   .settings-layout, .settings-main, .settings-aside { gap: 8px; }
   .settings-aside { grid-template-columns: 1fr; }
-  .outlook-pool-layout, .outlook-pool-aside { grid-template-columns: 1fr; gap: 8px; }
+  .outlook-pool-layout, .outlook-pool-aside, .outlook-mail-layout, .outlook-mail-aside { grid-template-columns: 1fr; gap: 8px; }
   .form-grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: span 1; }
   .settings-section .form-grid { padding: 12px; }
@@ -424,12 +449,18 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
   .outlook-pool-table td:nth-child(4), .outlook-pool-table td:nth-child(5), .outlook-pool-table td:nth-child(6), .outlook-pool-table td:nth-child(7) { grid-column: 2 / -1; grid-row: auto; }
   .outlook-pool-table td:nth-child(5)::before { content: "可用分裂 "; color: var(--subtle); font-size: 9px; font-weight: 500; }
   .outlook-pool-table td.token-cell { color: var(--muted); }
+  .outlook-mail-table tr { grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; }
+  .outlook-mail-table td { grid-column: 1 / -1; }
+  .outlook-mail-table td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .outlook-mail-table td:nth-child(2) { grid-column: 2; grid-row: 1; justify-self: end; }
+  .outlook-mail-table td:nth-child(3), .outlook-mail-table td:nth-child(4), .outlook-mail-table td:nth-child(5), .outlook-mail-table td:nth-child(6) { grid-column: 1 / -1; }
+  .outlook-mail-table td:nth-child(3)::before { content: "邮件数 "; color: var(--subtle); font-size: 9px; font-weight: 500; }
   .pagination-bar { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px; }
   .pagination-info { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .pagination-info span { text-align: right; }
   .pagination-controls { justify-content: space-between; gap: 8px; }
   .pagination-pages .pagination-page:not(.active), .pagination-pages .pagination-ellipsis { display: none; }
-  .bottom-nav { position: fixed; inset: auto 8px max(8px, env(safe-area-inset-bottom, 0px)) 8px; z-index: 100; display: grid; grid-template-columns: repeat(3, 1fr); height: 58px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.98); box-shadow: 0 8px 24px rgba(23, 33, 27, .12); }
+  .bottom-nav { position: fixed; inset: auto 8px max(8px, env(safe-area-inset-bottom, 0px)) 8px; z-index: 100; display: grid; grid-template-columns: repeat(4, 1fr); height: 58px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.98); box-shadow: 0 8px 24px rgba(23, 33, 27, .12); }
   .bottom-nav button { display: grid; place-items: center; align-content: center; gap: 2px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 10px; }
   .bottom-nav button i { font-size: 19px; }
   .bottom-nav button.active { background: var(--green-soft); color: var(--green); }

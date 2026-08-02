@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.registration.outlook import OutlookMailboxPool
+from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
 from app.storage import JsonStore
 
 
@@ -161,3 +161,48 @@ def test_authenticated_outlook_pool_delete_selected_and_clear_all(tmp_path, monk
         cleared = client.request("DELETE", "/api/outlook-pool", json={"clear_all": True}).json()
         assert cleared["removed"] == 2
         assert cleared["total"] == 0
+
+
+def test_outlook_mail_directory_counts_export_and_daily_api_stats(tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("REG_ADMIN_PASSWORD", "admin123")
+    monkeypatch.setenv("REG_OUTLOOK_IMPORT_API_KEY", "outlook-import-test-key")
+    store = JsonStore(tmp_path)
+    app = create_app(store=store)
+    item = {
+        "email": "mailbox@example.test",
+        "password": "Password123!",
+        "client_id": "client-id",
+        "refresh_token": "refresh-token",
+    }
+
+    with TestClient(app) as client:
+        imported = client.post(
+            "/api/outlook-pool/import",
+            headers={"x-api-key": "outlook-import-test-key"},
+            json=[item],
+        )
+        assert imported.status_code == 200
+        client.post("/api/auth/login", json={"username": "admin", "password": "admin123"})
+
+        listing = client.get("/api/outlook-mails").json()
+        assert listing["total"] == 1
+        assert listing["items"][0]["email"] == item["email"]
+        assert listing["summary"]["mailbox_counted"] == 0
+        assert listing["import_stats"]["today"]["api_added"] == 1
+
+        detail = client.get("/api/outlook-mails/export.txt")
+        assert detail.status_code == 200
+        assert "mailbox@example.test----Password123!----client-id----refresh-token" in detail.text
+        assert "Content-Disposition" in detail.headers
+        raw = client.get("/api/outlook-mails/export.txt?format=raw")
+        assert raw.status_code == 200
+        assert "----available----" not in raw.text
+
+        monkeypatch.setattr(OutlookMailClient, "count_messages", lambda self, record: 17)
+        refreshed = client.post("/api/outlook-mails/refresh-counts", json={"all": True, "mailbox_ids": []})
+        assert refreshed.status_code == 200
+        assert refreshed.json()["updated"] == 1
+        checked = client.get("/api/outlook-mails").json()
+        assert checked["summary"]["mail_total"] == 17
+        assert checked["items"][0]["mail_count"] == 17

@@ -5,12 +5,13 @@ import json
 import os
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth import SessionSigner, UserStore
@@ -18,7 +19,7 @@ from app.cloud import CloudClient, capacity_estimate
 from app.health import AccountHealthService
 from app.manager import RegistrationManager
 from app.monitor import CloudRegistrationMonitor
-from app.registration.outlook import OutlookMailboxPool
+from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
 from app.storage import DEFAULT_SETTINGS, JsonStore, deep_merge
 
 
@@ -187,12 +188,53 @@ class DeleteOutlookPoolRequest(BaseModel):
     clear_all: bool = False
 
 
+class OutlookMailCountRequest(BaseModel):
+    mailbox_ids: list[str] = Field(default_factory=list, max_length=1000)
+    all: bool = False
+
+
 class DeleteAccountsRequest(BaseModel):
     account_ids: list[str] = Field(default_factory=list, max_length=200)
 
 
 class HealthCheckRequest(BaseModel):
     account_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
+def _record_outlook_import_stats(store: JsonStore, result: dict[str, Any], actor: str) -> dict[str, Any]:
+    day = datetime.now(timezone.utc).date().isoformat()
+    added = int(result.get("added") or 0)
+    updated = int(result.get("updated") or 0)
+    source = "api" if actor == "api" else "ui"
+
+    def update(raw: Any) -> dict[str, Any]:
+        payload = raw if isinstance(raw, dict) else {}
+        days = payload.setdefault("days", {})
+        entry = days.setdefault(day, {
+            "date": day,
+            "added": 0,
+            "updated": 0,
+            "requests": 0,
+            "api_added": 0,
+            "api_updated": 0,
+            "api_requests": 0,
+            "ui_added": 0,
+            "ui_updated": 0,
+            "ui_requests": 0,
+            "last_at": "",
+        })
+        entry["date"] = day
+        entry["added"] = int(entry.get("added") or 0) + added
+        entry["updated"] = int(entry.get("updated") or 0) + updated
+        entry["requests"] = int(entry.get("requests") or 0) + 1
+        entry[f"{source}_added"] = int(entry.get(f"{source}_added") or 0) + added
+        entry[f"{source}_updated"] = int(entry.get(f"{source}_updated") or 0) + updated
+        entry[f"{source}_requests"] = int(entry.get(f"{source}_requests") or 0) + 1
+        entry["last_at"] = datetime.now(timezone.utc).isoformat()
+        payload["days"] = days
+        return payload
+
+    return store.update("outlook_import_stats.json", {"days": {}}, update)
 
 
 def create_app(
@@ -368,6 +410,115 @@ def create_app(
         }
         return result
 
+    @app.get("/api/outlook-mails")
+    async def outlook_mail_list(
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=20, ge=10, le=100),
+        query: str = Query(default="", max_length=200),
+        status: str = Query(default="all", max_length=20),
+        _user: str = Depends(current_user),
+    ) -> dict[str, Any]:
+        settings = await run_in_threadpool(runtime_store.settings)
+        mail = settings.get("mail") if isinstance(settings.get("mail"), dict) else {}
+        result = await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).snapshot,
+            int(mail.get("outlook_split_limit") or 5),
+            page=page,
+            page_size=page_size,
+            query=query,
+            status=status,
+        )
+        stats = await run_in_threadpool(runtime_store.read, "outlook_import_stats.json", {"days": {}})
+        days = stats.get("days") if isinstance(stats, dict) and isinstance(stats.get("days"), dict) else {}
+        ordered_days = [days[key] for key in sorted(days, reverse=True) if isinstance(days[key], dict)][:30]
+        today = ordered_days[0] if ordered_days and str(ordered_days[0].get("date") or "") == datetime.now(timezone.utc).date().isoformat() else {}
+        summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+        all_counted = 0
+        mail_total = 0
+        for item in await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).mailbox_records,
+            [],
+            all_records=True,
+        ):
+            checked = str(item.get("mail_count_checked_at") or "").strip()
+            count = int(item.get("mail_count") or 0)
+            if checked:
+                all_counted += 1
+                mail_total += count
+        result["summary"] = {
+            **summary,
+            "mailbox_counted": all_counted,
+            "mail_total": mail_total,
+        }
+        result["import_stats"] = {
+            "today": today,
+            "recent": ordered_days,
+        }
+        return result
+
+    @app.post("/api/outlook-mails/refresh-counts")
+    async def refresh_outlook_mail_counts(
+        body: OutlookMailCountRequest,
+        _user: str = Depends(current_user),
+    ) -> dict[str, Any]:
+        settings = await run_in_threadpool(runtime_store.settings)
+        mail = settings.get("mail") if isinstance(settings.get("mail"), dict) else {}
+        registration = settings.get("registration") if isinstance(settings.get("registration"), dict) else {}
+        records = await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).mailbox_records,
+            list(dict.fromkeys(str(value or "").strip() for value in body.mailbox_ids if str(value or "").strip())),
+            all_records=body.all,
+        )
+        if not records:
+            return {"ok": True, "total": 0, "updated": 0, "failed": 0, "items": []}
+
+        def refresh() -> dict[str, Any]:
+            pool = OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json"))
+            client = OutlookMailClient(
+                runtime_store.path("outlook_mailboxes.json"),
+                proxy=str(registration.get("proxy") or "").strip(),
+                request_timeout=float(registration.get("request_timeout") or 45),
+                split_limit=int(mail.get("outlook_split_limit") or 5),
+            )
+            updated = 0
+            failed = 0
+            items: list[dict[str, Any]] = []
+            try:
+                for record in records:
+                    identifier = str(record.get("id") or "")
+                    try:
+                        count = client.count_messages(record)
+                        pool.update_mail_count(identifier, count, "")
+                        items.append({"id": identifier, "email": str(record.get("email") or ""), "mail_count": count, "error": ""})
+                        updated += 1
+                    except Exception as exc:  # network/auth errors are shown per row
+                        detail = str(exc)[:500]
+                        pool.update_mail_count(identifier, None, detail)
+                        items.append({"id": identifier, "email": str(record.get("email") or ""), "mail_count": int(record.get("mail_count") or 0), "error": detail})
+                        failed += 1
+            finally:
+                client.close()
+            return {"ok": True, "total": len(records), "updated": updated, "failed": failed, "items": items}
+
+        return await run_in_threadpool(refresh)
+
+    @app.get("/api/outlook-mails/export.txt")
+    async def export_outlook_mails(
+        format: str = Query(default="detail", max_length=20),
+        _user: str = Depends(current_user),
+    ) -> PlainTextResponse:
+        detail = str(format or "detail").strip().lower() != "raw"
+        content = await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).export_text,
+            detail=detail,
+        )
+        filename = "outlook-mailboxes-detail.txt" if detail else "outlook-mailboxes.txt"
+        return PlainTextResponse(
+            content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     @app.post("/api/outlook-pool/import")
     async def import_outlook_pool_api(
         request: Request,
@@ -385,8 +536,9 @@ def create_app(
             )
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        stats = await run_in_threadpool(_record_outlook_import_stats, runtime_store, result, _actor)
         runtime_manager.log("success", f"Outlook 导入 API：新增 {result['added']}，更新 {result['updated']}")
-        return {"ok": True, **result}
+        return {"ok": True, **result, "import_stats": stats.get("days", {}).get(datetime.now(timezone.utc).date().isoformat(), {})}
 
     @app.post("/api/settings/outlook-pool/import")
     async def import_outlook_pool(

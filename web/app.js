@@ -39,6 +39,15 @@ const state = {
   outlookPoolStatus: 'all',
   outlookPoolSearchTimer: null,
   outlookPoolSelected: new Set(),
+  outlookMails: null,
+  outlookMailItems: [],
+  outlookMailPage: 1,
+  outlookMailPageSize: 20,
+  outlookMailPages: 1,
+  outlookMailTotal: 0,
+  outlookMailSearch: '',
+  outlookMailStatus: 'all',
+  outlookMailSearchTimer: null,
 }
 
 function escapeHtml(value) {
@@ -198,7 +207,7 @@ async function showApp(username) {
   $('#accountName').textContent = username
   $('#accountInitial').textContent = (username[0] || 'A').toUpperCase()
   $('#securityUsername').textContent = username
-  await Promise.all([loadSettings(), loadOutlookPool(), loadDashboard(), loadLogs()])
+  await Promise.all([loadSettings(), loadOutlookPool(), loadOutlookMails(), loadDashboard(), loadLogs()])
   if (!state.pollTimer) state.pollTimer = window.setInterval(pollRuntime, 1500)
 }
 
@@ -213,11 +222,12 @@ async function checkSession() {
 }
 
 function setPage(page) {
-  const target = ['register', 'outlook-pool', 'settings'].includes(page) ? page : 'register'
+  const target = ['register', 'outlook-pool', 'outlook-mails', 'settings'].includes(page) ? page : 'register'
   $$('.page').forEach((node) => node.classList.toggle('active', node.id === `page-${target}`))
   $$('[data-page]').forEach((node) => node.classList.toggle('active', node.dataset.page === target))
   if (location.hash !== `#${target}`) history.replaceState(null, '', `#${target}`)
   if (target === 'outlook-pool') loadOutlookPool().catch((error) => toast(error.message, 'error'))
+  if (target === 'outlook-mails') loadOutlookMails().catch((error) => toast(error.message, 'error'))
 }
 
 function formatDuration(seconds) {
@@ -807,6 +817,118 @@ async function loadOutlookPool(page = null) {
   return payload
 }
 
+function renderOutlookMailPagination() {
+  const firstItem = state.outlookMailTotal ? ((state.outlookMailPage - 1) * state.outlookMailPageSize) + 1 : 0
+  const lastItem = Math.min(state.outlookMailPage * state.outlookMailPageSize, state.outlookMailTotal)
+  $('#outlookMailPageSummary').textContent = `第 ${state.outlookMailPage} / ${state.outlookMailPages} 页`
+  $('#outlookMailRangeSummary').textContent = state.outlookMailTotal
+    ? `显示 ${firstItem}-${lastItem}，共 ${state.outlookMailTotal} 个邮箱`
+    : '暂无邮箱'
+  $('#outlookMailPageSize').value = String(state.outlookMailPageSize)
+  $('#outlookMailPrevPage').disabled = state.outlookMailPage <= 1
+  $('#outlookMailNextPage').disabled = state.outlookMailPage >= state.outlookMailPages
+  $('#outlookMailPageNumbers').innerHTML = accountPageItems(state.outlookMailPage, state.outlookMailPages)
+    .map((item) => typeof item === 'number'
+      ? `<button class="pagination-page${item === state.outlookMailPage ? ' active' : ''}" type="button" data-outlook-mail-page="${item}" aria-label="第 ${item} 页"${item === state.outlookMailPage ? ' aria-current="page"' : ''}>${item}</button>`
+      : '<span class="pagination-ellipsis" aria-hidden="true">...</span>')
+    .join('')
+}
+
+function renderOutlookMailImportStats(stats) {
+  const container = $('#outlookMailImportStats')
+  const recent = Array.isArray(stats?.recent) ? stats.recent : []
+  if (!recent.length) {
+    container.innerHTML = '<div class="log-empty"><i class="ti ti-chart-bar"></i><span>暂无导入记录</span></div>'
+    return
+  }
+  container.innerHTML = recent.slice(0, 14).map((item) => `
+    <div class="outlook-mail-import-row">
+      <strong>${escapeHtml(item.date || '-')}</strong>
+      <span>新增 ${Number(item.api_added || 0)} · 更新 ${Number(item.api_updated || 0)}</span>
+      <b>${Number(item.api_requests || 0)} 次</b>
+    </div>`).join('')
+}
+
+function renderOutlookMails(payload) {
+  state.outlookMails = payload || null
+  state.outlookMailItems = Array.isArray(payload?.items) ? payload.items : []
+  state.outlookMailPage = Number(payload?.page) || 1
+  state.outlookMailPageSize = Number(payload?.page_size) || state.outlookMailPageSize
+  state.outlookMailPages = Number(payload?.pages) || 1
+  state.outlookMailTotal = Number(payload?.total) || 0
+  state.outlookMailStatus = payload?.status || state.outlookMailStatus
+  const summary = payload?.summary || {}
+  const importStats = payload?.import_stats || {}
+  const today = importStats.today || {}
+  const recent = Array.isArray(importStats.recent) ? importStats.recent : []
+  const week = recent.slice(0, 7).reduce((sum, item) => sum + Number(item.api_added || 0), 0)
+  $('#sideOutlookMailCount').textContent = state.outlookMailTotal
+  $('#outlookMailStatTotal').textContent = Number(summary.total ?? state.outlookMailTotal)
+  $('#outlookMailStatMessages').textContent = Number(summary.mail_total || 0)
+  $('#outlookMailStatChecked').textContent = `已统计 ${Number(summary.mailbox_counted || 0)} 个`
+  $('#outlookMailStatToday').textContent = Number(today.api_added || 0)
+  $('#outlookMailStatTodayMeta').textContent = `更新 ${Number(today.api_updated || 0)} · ${Number(today.api_requests || 0)} 次请求`
+  $('#outlookMailStatWeek').textContent = week
+  $('#outlookMailListMeta').textContent = state.outlookMailSearch || state.outlookMailStatus !== 'all'
+    ? `${state.outlookMailTotal} 条匹配`
+    : `${Number(summary.total || state.outlookMailTotal)} 个邮箱`
+  renderOutlookMailImportStats(importStats)
+  $$('[data-outlook-mail-status]').forEach((button) => {
+    const active = button.dataset.outlookMailStatus === state.outlookMailStatus
+    button.classList.toggle('active', active)
+    button.setAttribute('aria-selected', active ? 'true' : 'false')
+  })
+  renderOutlookMailPagination()
+  const body = $('#outlookMailBody')
+  const empty = $('#outlookMailEmpty')
+  body.innerHTML = ''
+  empty.hidden = state.outlookMailItems.length > 0
+  empty.querySelector('strong').textContent = state.outlookMailSearch || state.outlookMailStatus !== 'all' ? '没有匹配的 Outlook 邮箱' : '暂无 Outlook 邮箱'
+  state.outlookMailItems.forEach((item) => {
+    const [label, tone, icon] = outlookPoolStatusPresentation(item.status)
+    const count = Number(item.mail_count || 0)
+    const hasCount = Boolean(item.mail_count_checked_at)
+    const error = item.mail_count_error || item.last_error || ''
+    const row = document.createElement('tr')
+    row.innerHTML = `
+      <td class="email-cell" title="${escapeHtml(item.email || '')}"><span>${escapeHtml(item.email || '-')}</span></td>
+      <td><span class="health-state ${tone}" title="${escapeHtml(item.last_error || label)}"><i class="ti ${icon}"></i>${escapeHtml(label)}</span></td>
+      <td><strong class="outlook-mail-count${hasCount ? '' : ' pending'}">${hasCount ? count : '未统计'}</strong></td>
+      <td><time class="outlook-mail-time" title="${escapeHtml(item.imported_at || '')}">${escapeHtml(formatTime(item.imported_at))}</time></td>
+      <td><time class="outlook-mail-time" title="${escapeHtml(item.mail_count_checked_at || '')}">${escapeHtml(formatTime(item.mail_count_checked_at))}</time></td>
+      <td class="mail-note-cell"><span class="${error ? 'error' : ''}" title="${escapeHtml(error || '状态正常')}">${escapeHtml(error || '状态正常')}</span></td>`
+    body.appendChild(row)
+  })
+}
+
+async function loadOutlookMails(page = null) {
+  const requestedPage = Math.max(1, Number(page ?? state.outlookMailPage) || 1)
+  const params = new URLSearchParams({
+    page: String(requestedPage),
+    page_size: String(state.outlookMailPageSize),
+    status: state.outlookMailStatus,
+  })
+  if (state.outlookMailSearch) params.set('query', state.outlookMailSearch)
+  const payload = await api(`/api/outlook-mails?${params.toString()}`)
+  renderOutlookMails(payload)
+  return payload
+}
+
+async function refreshOutlookMailCounts() {
+  const button = $('#refreshOutlookMailCountsButton')
+  setBusy(button, true, '统计中')
+  try {
+    const result = await api('/api/outlook-mails/refresh-counts', {
+      method: 'POST',
+      body: JSON.stringify({ all: true, mailbox_ids: [] }),
+    })
+    await loadOutlookMails(state.outlookMailPage)
+    toast(`邮件数统计完成：成功 ${result.updated || 0}，失败 ${result.failed || 0}`)
+  } finally {
+    setBusy(button, false)
+  }
+}
+
 async function importOutlookPool(source = 'settings') {
   const input = source === 'page' ? $('#outlookPoolPageInput') : $('#outlookPoolInput')
   const items = input.value.trim()
@@ -1163,6 +1285,9 @@ $('#saveSettingsButton').addEventListener('click', () => saveSettings().catch((e
 $('#outlookPoolImportButton').addEventListener('click', () => importOutlookPool().catch((error) => toast(error.message, 'error')))
 $('#outlookPoolPageImportButton').addEventListener('click', () => importOutlookPool('page').catch((error) => toast(error.message, 'error')))
 $('#reloadOutlookPoolButton').addEventListener('click', () => loadOutlookPool().catch((error) => toast(error.message, 'error')))
+$('#reloadOutlookMailsButton').addEventListener('click', () => loadOutlookMails().catch((error) => toast(error.message, 'error')))
+$('#refreshOutlookMailCountsButton').addEventListener('click', () => refreshOutlookMailCounts().catch((error) => toast(error.message, 'error')))
+$('#exportOutlookMailsButton').addEventListener('click', () => { window.location.href = '/api/outlook-mails/export.txt?format=detail' })
 $('#deleteSelectedOutlookButton').addEventListener('click', () => deleteSelectedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
 $('#clearOutlookPoolButton').addEventListener('click', () => clearOutlookPool().catch((error) => toast(error.message, 'error')))
 $('#changePasswordButton').addEventListener('click', () => changePassword().catch((error) => toast(error.message, 'error')))
@@ -1231,6 +1356,40 @@ $('#outlookPoolSearchClear').addEventListener('click', () => {
   state.outlookPoolSearch = ''
   state.outlookPoolPage = 1
   loadOutlookPool(1).catch((error) => toast(error.message, 'error'))
+})
+$('#outlookMailPrevPage').addEventListener('click', () => loadOutlookMails(state.outlookMailPage - 1).catch((error) => toast(error.message, 'error')))
+$('#outlookMailNextPage').addEventListener('click', () => loadOutlookMails(state.outlookMailPage + 1).catch((error) => toast(error.message, 'error')))
+$('#outlookMailPageNumbers').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-outlook-mail-page]')
+  if (!button || button.matches('[aria-current="page"]')) return
+  loadOutlookMails(Number(button.dataset.outlookMailPage)).catch((error) => toast(error.message, 'error'))
+})
+$('#outlookMailPageSize').addEventListener('change', (event) => {
+  state.outlookMailPageSize = Number(event.target.value) || 20
+  state.outlookMailPage = 1
+  loadOutlookMails(1).catch((error) => toast(error.message, 'error'))
+})
+$('#outlookMailCategories').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-outlook-mail-status]')
+  if (!button || button.dataset.outlookMailStatus === state.outlookMailStatus) return
+  state.outlookMailStatus = button.dataset.outlookMailStatus
+  state.outlookMailPage = 1
+  loadOutlookMails(1).catch((error) => toast(error.message, 'error'))
+})
+$('#outlookMailSearch').addEventListener('input', (event) => {
+  state.outlookMailSearch = event.target.value.trim()
+  $('#outlookMailSearchClear').hidden = !state.outlookMailSearch
+  state.outlookMailPage = 1
+  window.clearTimeout(state.outlookMailSearchTimer)
+  state.outlookMailSearchTimer = window.setTimeout(() => loadOutlookMails(1).catch((error) => toast(error.message, 'error')), 280)
+})
+$('#outlookMailSearchClear').addEventListener('click', () => {
+  window.clearTimeout(state.outlookMailSearchTimer)
+  $('#outlookMailSearch').value = ''
+  $('#outlookMailSearchClear').hidden = true
+  state.outlookMailSearch = ''
+  state.outlookMailPage = 1
+  loadOutlookMails(1).catch((error) => toast(error.message, 'error'))
 })
 $('#toggleOutlookApiKey').addEventListener('click', (event) => {
   const input = $('#outlookImportApiKey')
