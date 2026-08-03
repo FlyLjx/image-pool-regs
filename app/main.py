@@ -131,6 +131,8 @@ class NotificationSettings(BaseModel):
     bark_key: str = Field(default="", max_length=500)
     bark_low_stock_threshold: int = Field(default=100, ge=1, le=100000)
     bark_check_interval_seconds: int = Field(default=30, ge=5, le=3600)
+    bark_report_enabled: bool = False
+    bark_report_interval_seconds: int = Field(default=3600, ge=60, le=86400)
 
     @field_validator("bark_url")
     @classmethod
@@ -377,6 +379,7 @@ def create_app(
             "bark": runtime_bark.status(),
             "health": runtime_health.status(),
             "accounts": await run_in_threadpool(runtime_manager.account_summary),
+            "registration_report": await run_in_threadpool(runtime_manager.registration_report),
         }
 
     @app.get("/api/settings")

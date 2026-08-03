@@ -524,6 +524,8 @@ function fillSettings(settings) {
   $('#barkKey').value = notifications.bark_key || ''
   $('#barkLowStockThreshold').value = notifications.bark_low_stock_threshold || 100
   $('#barkCheckInterval').value = notifications.bark_check_interval_seconds || 30
+  $('#barkReportEnabled').checked = Boolean(notifications.bark_report_enabled)
+  $('#barkReportInterval').value = notifications.bark_report_interval_seconds || 3600
   $('#proxyUrl').value = registration.proxy || ''
   $('#browserProfile').value = registration.browser_profile || 'chrome_windows'
   $('#browserEngine').value = registration.browser_engine || 'camoufox'
@@ -598,6 +600,8 @@ function collectSettings() {
       bark_key: $('#barkKey').value.trim(),
       bark_low_stock_threshold: Number($('#barkLowStockThreshold').value),
       bark_check_interval_seconds: Number($('#barkCheckInterval').value),
+      bark_report_enabled: $('#barkReportEnabled').checked,
+      bark_report_interval_seconds: Number($('#barkReportInterval').value),
     },
     flaresolverr: {
       enabled: $('#flareEnabled').checked,

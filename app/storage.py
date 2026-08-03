@@ -55,6 +55,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "bark_key": "",
         "bark_low_stock_threshold": 100,
         "bark_check_interval_seconds": 30,
+        "bark_report_enabled": False,
+        "bark_report_interval_seconds": 3600,
     },
     "flaresolverr": {
         "enabled": False,

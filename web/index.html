@@ -337,13 +337,15 @@
             </section>
 
             <section class="panel settings-section">
-              <header class="panel-head"><div><i class="ti ti-bell-ringing"></i><span><strong>Bark 库存通知</strong><small>Outlook 可注册量不足时推送</small></span></div></header>
+              <header class="panel-head"><div><i class="ti ti-bell-ringing"></i><span><strong>Bark 通知</strong><small>库存提醒与定时注册汇报</small></span></div></header>
               <div class="form-grid">
-                <label class="toggle-row span-2"><span><strong>启用 Bark 通知</strong><small>仅 Outlook 邮箱池低于阈值时发送</small></span><input id="barkEnabled" type="checkbox"><i></i></label>
+                <label class="toggle-row span-2"><span><strong>启用低库存通知</strong><small>Outlook 邮箱池低于阈值时发送</small></span><input id="barkEnabled" type="checkbox"><i></i></label>
+                <label class="toggle-row span-2"><span><strong>启用定时注册汇报</strong><small>按间隔发送成功率、邮箱导入量和剩余可注册数</small></span><input id="barkReportEnabled" type="checkbox"><i></i></label>
                 <label class="field span-2"><span>Bark 地址</span><input id="barkUrl" type="url" placeholder="https://api.day.app"></label>
                 <label class="field span-2"><span>Bark Key</span><span class="input-wrap"><i class="ti ti-key"></i><input id="barkKey" type="password" autocomplete="off" placeholder="填入 Bark Key"></span></label>
                 <label class="field"><span>低库存阈值</span><input id="barkLowStockThreshold" type="number" min="1" max="100000" value="100"></label>
                 <label class="field"><span>检查间隔（秒）</span><input id="barkCheckInterval" type="number" min="5" max="3600" value="30"></label>
+                <label class="field"><span>汇报间隔（秒）</span><input id="barkReportInterval" type="number" min="60" max="86400" value="3600"></label>
               </div>
             </section>
 

@@ -55,6 +55,10 @@ def test_manager_persists_each_success(tmp_path):
     assert len(accounts) == 3
     assert manager.accounts()[0]["password"] == "********"
     assert manager.account_credentials("1")["password"] == "Password123!"
+    report = manager.registration_report()
+    assert report["today"]["success"] == 3
+    assert report["today"]["failed"] == 0
+    assert report["today"]["success_rate"] == 100.0
 
 
 def test_manager_uploads_successful_account_to_cloud(tmp_path, monkeypatch):

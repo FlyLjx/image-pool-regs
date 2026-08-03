@@ -231,6 +231,71 @@ class RegistrationManager:
             "today": sum(1 for item in accounts if str(item.get("created_at") or "").startswith(today)),
         }
 
+    def _record_registration_result(self, success: bool) -> None:
+        """Persist registration outcomes so periodic reports survive restarts."""
+        day = datetime.now(timezone.utc).date().isoformat()
+        key = "success" if success else "failed"
+
+        def update(raw: Any) -> dict[str, Any]:
+            payload = raw if isinstance(raw, dict) else {}
+            payload["total_success"] = int(payload.get("total_success") or 0)
+            payload["total_failed"] = int(payload.get("total_failed") or 0)
+            payload["days"] = payload.get("days") if isinstance(payload.get("days"), dict) else {}
+            entry = payload["days"].setdefault(day, {"date": day, "success": 0, "failed": 0})
+            entry["date"] = day
+            entry["success"] = int(entry.get("success") or 0)
+            entry["failed"] = int(entry.get("failed") or 0)
+            entry[key] += 1
+            total_key = "total_success" if success else "total_failed"
+            payload[total_key] += 1
+            payload["last_at"] = _now()
+            return payload
+
+        try:
+            self.store.update("registration_stats.json", {"total_success": 0, "total_failed": 0, "days": {}}, update)
+        except Exception as exc:
+            self.log("warning", f"注册统计写入失败：{str(exc)[:300]}")
+
+    def registration_report(self) -> dict[str, Any]:
+        """Return aggregate and today's registration success metrics."""
+        payload = self.store.read("registration_stats.json", {"total_success": 0, "total_failed": 0, "days": {}})
+        if not isinstance(payload, dict):
+            payload = {}
+        total_success = max(0, int(payload.get("total_success") or 0))
+        total_failed = max(0, int(payload.get("total_failed") or 0))
+        today_key = datetime.now(timezone.utc).date().isoformat()
+        days = payload.get("days") if isinstance(payload.get("days"), dict) else {}
+        today = days.get(today_key) if isinstance(days.get(today_key), dict) else {}
+        today_success = max(0, int(today.get("success") or 0))
+        today_failed = max(0, int(today.get("failed") or 0))
+        if total_success + total_failed == 0:
+            # Existing installations predate registration_stats.json. Use the
+            # persisted account list as a useful success-only baseline until
+            # the first failed or successful attempt is recorded.
+            account_totals = self.account_summary()
+            total_success = max(total_success, int(account_totals.get("total") or 0))
+            today_success = max(today_success, int(account_totals.get("today") or 0))
+
+        def rate(success: int, failed: int) -> float:
+            attempts = success + failed
+            return round(success * 100 / attempts, 2) if attempts else 0.0
+
+        return {
+            "today": {
+                "success": today_success,
+                "failed": today_failed,
+                "attempts": today_success + today_failed,
+                "success_rate": rate(today_success, today_failed),
+            },
+            "total": {
+                "success": total_success,
+                "failed": total_failed,
+                "attempts": total_success + total_failed,
+                "success_rate": rate(total_success, total_failed),
+            },
+            "last_at": str(payload.get("last_at") or ""),
+        }
+
     def _persist_account(self, account: dict[str, Any]) -> None:
         payload = copy.deepcopy(account)
         payload["provider"] = self._PROVIDER
@@ -407,6 +472,7 @@ class RegistrationManager:
                     with self._lock:
                         if self._state.get("job_id") == job_id:
                             self._state["success"] += 1
+                    self._record_registration_result(True)
                     self.log("success", f"账号已写入 JSON：{account.get('email') or 'unknown'}", task_number)
 
                     if should_upload:
@@ -417,6 +483,7 @@ class RegistrationManager:
                         if self._state.get("job_id") == job_id:
                             self._state["failed"] += 1
                             self._state["errors"] = (self._state["errors"] + [{"task": task_number, "message": message}])[-20:]
+                    self._record_registration_result(False)
                     self.log("warning" if stop_event.is_set() else "error", f"注册失败：{message}", task_number)
                 finally:
                     if registrar is not None:

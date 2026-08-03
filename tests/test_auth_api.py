@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
+from app.registration.outlook import OutlookMailboxPool
 from app.storage import JsonStore
 
 
@@ -44,6 +44,8 @@ def test_settings_validation_and_persistence(tmp_path, monkeypatch):
         settings["registration"]["browser_headless"] = True
         settings["registration"]["browser_slow_mo_ms"] = 75
         settings["mail"]["api_key"] = "AC-TEST"
+        settings["notifications"]["bark_report_enabled"] = True
+        settings["notifications"]["bark_report_interval_seconds"] = 3600
         saved = client.put("/api/settings", json=settings)
 
         assert saved.status_code == 200
@@ -52,6 +54,8 @@ def test_settings_validation_and_persistence(tmp_path, monkeypatch):
         assert store.settings()["registration"]["browser_headless"] is True
         assert store.settings()["registration"]["browser_slow_mo_ms"] == 75
         assert store.settings()["mail"]["api_key"] == "AC-TEST"
+        assert store.settings()["notifications"]["bark_report_enabled"] is True
+        assert store.settings()["notifications"]["bark_report_interval_seconds"] == 3600
 
 
 def test_registration_concurrency_can_be_saved_up_to_fifty(tmp_path, monkeypatch):
@@ -163,7 +167,7 @@ def test_authenticated_outlook_pool_delete_selected_and_clear_all(tmp_path, monk
         assert cleared["total"] == 0
 
 
-def test_outlook_mail_directory_counts_export_and_daily_api_stats(tmp_path, monkeypatch):
+def test_outlook_mail_directory_export_and_daily_api_stats(tmp_path, monkeypatch):
     monkeypatch.setenv("REG_ADMIN_USERNAME", "admin")
     monkeypatch.setenv("REG_ADMIN_PASSWORD", "admin123")
     monkeypatch.setenv("REG_OUTLOOK_IMPORT_API_KEY", "outlook-import-test-key")
@@ -188,7 +192,7 @@ def test_outlook_mail_directory_counts_export_and_daily_api_stats(tmp_path, monk
         listing = client.get("/api/outlook-mails").json()
         assert listing["total"] == 1
         assert listing["items"][0]["email"] == item["email"]
-        assert listing["summary"]["mailbox_counted"] == 0
+        assert listing["summary"]["total"] == 1
         assert listing["import_stats"]["today"]["api_added"] == 1
 
         detail = client.get("/api/outlook-mails/export.txt")
@@ -199,10 +203,4 @@ def test_outlook_mail_directory_counts_export_and_daily_api_stats(tmp_path, monk
         assert raw.status_code == 200
         assert "----available----" not in raw.text
 
-        monkeypatch.setattr(OutlookMailClient, "count_messages", lambda self, record: 17)
-        refreshed = client.post("/api/outlook-mails/refresh-counts", json={"all": True, "mailbox_ids": []})
-        assert refreshed.status_code == 200
-        assert refreshed.json()["updated"] == 1
-        checked = client.get("/api/outlook-mails").json()
-        assert checked["summary"]["mail_total"] == 17
-        assert checked["items"][0]["mail_count"] == 17
+        assert client.get("/api/outlook-mails/refresh-counts").status_code == 404
