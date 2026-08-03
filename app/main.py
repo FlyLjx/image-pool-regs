@@ -20,7 +20,7 @@ from app.health import AccountHealthService
 from app.manager import RegistrationManager
 from app.monitor import CloudRegistrationMonitor
 from app.notifications import BarkStockNotifier
-from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
+from app.registration.outlook import OutlookMailboxPool
 from app.storage import DEFAULT_SETTINGS, JsonStore, deep_merge
 
 
@@ -205,11 +205,6 @@ class OutlookPoolImportRequest(BaseModel):
 class DeleteOutlookPoolRequest(BaseModel):
     mailbox_ids: list[str] = Field(default_factory=list, max_length=1000)
     clear_all: bool = False
-
-
-class OutlookMailCountRequest(BaseModel):
-    mailbox_ids: list[str] = Field(default_factory=list, max_length=1000)
-    all: bool = False
 
 
 class DeleteAccountsRequest(BaseModel):
@@ -456,75 +451,11 @@ def create_app(
         days = stats.get("days") if isinstance(stats, dict) and isinstance(stats.get("days"), dict) else {}
         ordered_days = [days[key] for key in sorted(days, reverse=True) if isinstance(days[key], dict)][:30]
         today = ordered_days[0] if ordered_days and str(ordered_days[0].get("date") or "") == datetime.now(timezone.utc).date().isoformat() else {}
-        summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
-        all_counted = 0
-        mail_total = 0
-        for item in await run_in_threadpool(
-            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).mailbox_records,
-            [],
-            all_records=True,
-        ):
-            checked = str(item.get("mail_count_checked_at") or "").strip()
-            count = int(item.get("mail_count") or 0)
-            if checked:
-                all_counted += 1
-                mail_total += count
-        result["summary"] = {
-            **summary,
-            "mailbox_counted": all_counted,
-            "mail_total": mail_total,
-        }
         result["import_stats"] = {
             "today": today,
             "recent": ordered_days,
         }
         return result
-
-    @app.post("/api/outlook-mails/refresh-counts")
-    async def refresh_outlook_mail_counts(
-        body: OutlookMailCountRequest,
-        _user: str = Depends(current_user),
-    ) -> dict[str, Any]:
-        settings = await run_in_threadpool(runtime_store.settings)
-        mail = settings.get("mail") if isinstance(settings.get("mail"), dict) else {}
-        registration = settings.get("registration") if isinstance(settings.get("registration"), dict) else {}
-        records = await run_in_threadpool(
-            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).mailbox_records,
-            list(dict.fromkeys(str(value or "").strip() for value in body.mailbox_ids if str(value or "").strip())),
-            all_records=body.all,
-        )
-        if not records:
-            return {"ok": True, "total": 0, "updated": 0, "failed": 0, "items": []}
-
-        def refresh() -> dict[str, Any]:
-            pool = OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json"))
-            client = OutlookMailClient(
-                runtime_store.path("outlook_mailboxes.json"),
-                proxy=str(registration.get("proxy") or "").strip(),
-                request_timeout=float(registration.get("request_timeout") or 45),
-                split_limit=int(mail.get("outlook_split_limit") or 5),
-            )
-            updated = 0
-            failed = 0
-            items: list[dict[str, Any]] = []
-            try:
-                for record in records:
-                    identifier = str(record.get("id") or "")
-                    try:
-                        count = client.count_messages(record)
-                        pool.update_mail_count(identifier, count, "")
-                        items.append({"id": identifier, "email": str(record.get("email") or ""), "mail_count": count, "error": ""})
-                        updated += 1
-                    except Exception as exc:  # network/auth errors are shown per row
-                        detail = str(exc)[:500]
-                        pool.update_mail_count(identifier, None, detail)
-                        items.append({"id": identifier, "email": str(record.get("email") or ""), "mail_count": int(record.get("mail_count") or 0), "error": detail})
-                        failed += 1
-            finally:
-                client.close()
-            return {"ok": True, "total": len(records), "updated": updated, "failed": failed, "items": items}
-
-        return await run_in_threadpool(refresh)
 
     @app.get("/api/outlook-mails/export.txt")
     async def export_outlook_mails(

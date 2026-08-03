@@ -190,7 +190,7 @@ class OutlookMailboxPool:
                 display_status = "leased" if stored_status == "available" and (leased_slots or base_leased) else stored_status
                 email = str(item.get("email") or "")
                 client_id = str(item.get("client_id") or "")
-                if search and search not in f"{email} {client_id} {item.get('last_error') or ''} {item.get('mail_count_error') or ''}".lower():
+                if search and search not in f"{email} {client_id} {item.get('last_error') or ''}".lower():
                     continue
                 if category != "all" and display_status != category:
                     continue
@@ -214,9 +214,6 @@ class OutlookMailboxPool:
                     "last_leased_at": str(item.get("last_leased_at") or ""),
                     "updated_at": str(item.get("updated_at") or ""),
                     "imported_at": str(item.get("imported_at") or ""),
-                    "mail_count": int(item.get("mail_count") or 0),
-                    "mail_count_checked_at": str(item.get("mail_count_checked_at") or ""),
-                    "mail_count_error": str(item.get("mail_count_error") or ""),
                 })
             # Keep the UI in mailbox add/import order. Runtime updates such as
             # leasing, failed checks, or token refresh should not move rows around.
@@ -247,23 +244,6 @@ class OutlookMailboxPool:
                 return []
             return copy.deepcopy([item for item in entries if str(item.get("id") or "") in targets])
 
-    def update_mail_count(self, mailbox_id: str, count: int | None, error: str = "") -> bool:
-        identifier = str(mailbox_id or "").strip()
-        if not identifier:
-            return False
-        with self._lock:
-            entries = self._read_unlocked()
-            for item in entries:
-                if str(item.get("id") or "") != identifier:
-                    continue
-                item["mail_count"] = max(0, int(count or 0)) if count is not None else int(item.get("mail_count") or 0)
-                item["mail_count_checked_at"] = _now()
-                item["mail_count_error"] = str(error or "")[:500]
-                item["updated_at"] = _now()
-                self._write_unlocked(entries)
-                return True
-        return False
-
     def export_text(self, *, detail: bool = True) -> str:
         """Export mailbox credentials in import-compatible order."""
         with self._lock:
@@ -271,7 +251,7 @@ class OutlookMailboxPool:
         entries.sort(key=lambda item: (str(item.get("imported_at") or item.get("updated_at") or ""), str(item.get("email") or "")))
         lines: list[str] = []
         if detail:
-            lines.append("# Outlook 邮箱管理导出：邮箱----密码----Client ID----Refresh Token----状态----邮件数----添加时间")
+            lines.append("# Outlook 邮箱管理导出：邮箱----密码----Client ID----Refresh Token----状态----添加时间")
         for item in entries:
             base = "----".join([
                 str(item.get("email") or ""),
@@ -283,7 +263,6 @@ class OutlookMailboxPool:
                 base = "----".join([
                     base,
                     str(item.get("status") or "available"),
-                    str(int(item.get("mail_count") or 0)),
                     str(item.get("imported_at") or ""),
                 ])
             lines.append(base)
@@ -792,39 +771,6 @@ class OutlookMailClient:
                 "receivedDateTime": str(item.get("receivedDateTime") or ""),
             })
         return messages
-
-    def count_messages(self, record: dict[str, Any]) -> int:
-        """Read the exact inbox message count through Microsoft Graph."""
-        mailbox = record if str(record.get("address") or "").strip() else self._mailbox(record)
-        access_token = self._access_token(mailbox, scope=GRAPH_DEFAULT_SCOPE)
-        response = self.session.request(
-            "GET",
-            f"{GRAPH_BASE}/me/mailFolders/inbox/messages",
-            headers={
-                "authorization": f"Bearer {access_token}",
-                "accept": "application/json",
-                "consistencylevel": "eventual",
-            },
-            params={"$count": "true", "$top": "1", "$select": "id"},
-            timeout=self.request_timeout,
-            verify=False,
-        )
-        try:
-            data = response.json() if response.text else {}
-        except Exception:
-            data = {}
-        if response.status_code != 200:
-            detail = str(
-                data.get("error", {}).get("message")
-                if isinstance(data, dict) and isinstance(data.get("error"), dict)
-                else response.text[:240]
-            ).strip()
-            raise RuntimeError(f"Outlook Graph 读取邮件数量失败: HTTP {response.status_code}: {detail}")
-        value = data.get("@odata.count") if isinstance(data, dict) else None
-        if value is not None:
-            return max(0, int(value))
-        values = data.get("value") if isinstance(data, dict) else []
-        return len(values) if isinstance(values, list) else 0
 
     @staticmethod
     def _parsed_imap_message(message_id: bytes, raw: bytes) -> dict[str, Any]:

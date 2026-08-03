@@ -333,14 +333,10 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
 .outlook-mail-table-wrap { min-height: 360px; }
 .outlook-mail-table th:nth-child(1) { width: 30%; }
 .outlook-mail-table th:nth-child(2) { width: 12%; }
-.outlook-mail-table th:nth-child(3) { width: 12%; }
-.outlook-mail-table th:nth-child(4) { width: 18%; }
-.outlook-mail-table th:nth-child(5) { width: 18%; }
-.outlook-mail-table th:nth-child(6) { width: 20%; }
+.outlook-mail-table th:nth-child(3) { width: 20%; }
+.outlook-mail-table th:nth-child(4) { width: 38%; }
 .outlook-mail-table td.email-cell { max-width: 0; }
 .outlook-mail-table td.email-cell > span, .outlook-mail-table td.mail-note-cell > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.outlook-mail-count { color: var(--blue); font-size: 14px; font-weight: 800; }
-.outlook-mail-count.pending { color: var(--subtle); font-size: 10px; font-weight: 600; }
 .outlook-mail-time { color: var(--muted); font-size: 10px; }
 .outlook-mail-table td.mail-note-cell > span.error { color: var(--red); }
 .outlook-mail-note p { margin: 0; padding: 14px; color: var(--muted); font-size: 11px; line-height: 1.7; }
@@ -453,8 +449,7 @@ td.token-cell { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10
   .outlook-mail-table td { grid-column: 1 / -1; }
   .outlook-mail-table td:nth-child(1) { grid-column: 1; grid-row: 1; }
   .outlook-mail-table td:nth-child(2) { grid-column: 2; grid-row: 1; justify-self: end; }
-  .outlook-mail-table td:nth-child(3), .outlook-mail-table td:nth-child(4), .outlook-mail-table td:nth-child(5), .outlook-mail-table td:nth-child(6) { grid-column: 1 / -1; }
-  .outlook-mail-table td:nth-child(3)::before { content: "邮件数 "; color: var(--subtle); font-size: 9px; font-weight: 500; }
+  .outlook-mail-table td:nth-child(3), .outlook-mail-table td:nth-child(4) { grid-column: 1 / -1; }
   .pagination-bar { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px; }
   .pagination-info { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .pagination-info span { text-align: right; }

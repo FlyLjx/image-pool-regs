@@ -880,8 +880,6 @@ function renderOutlookMails(payload) {
   const week = recent.slice(0, 7).reduce((sum, item) => sum + Number(item.api_added || 0), 0)
   $('#sideOutlookMailCount').textContent = state.outlookMailTotal
   $('#outlookMailStatTotal').textContent = Number(summary.total ?? state.outlookMailTotal)
-  $('#outlookMailStatMessages').textContent = Number(summary.mail_total || 0)
-  $('#outlookMailStatChecked').textContent = `已统计 ${Number(summary.mailbox_counted || 0)} 个`
   $('#outlookMailStatToday').textContent = Number(today.api_added || 0)
   $('#outlookMailStatTodayMeta').textContent = `更新 ${Number(today.api_updated || 0)} · ${Number(today.api_requests || 0)} 次请求`
   $('#outlookMailStatWeek').textContent = week
@@ -902,16 +900,12 @@ function renderOutlookMails(payload) {
   empty.querySelector('strong').textContent = state.outlookMailSearch || state.outlookMailStatus !== 'all' ? '没有匹配的 Outlook 邮箱' : '暂无 Outlook 邮箱'
   state.outlookMailItems.forEach((item) => {
     const [label, tone, icon] = outlookPoolStatusPresentation(item.status)
-    const count = Number(item.mail_count || 0)
-    const hasCount = Boolean(item.mail_count_checked_at)
-    const error = item.mail_count_error || item.last_error || ''
+    const error = item.last_error || ''
     const row = document.createElement('tr')
     row.innerHTML = `
       <td class="email-cell" title="${escapeHtml(item.email || '')}"><span>${escapeHtml(item.email || '-')}</span></td>
       <td><span class="health-state ${tone}" title="${escapeHtml(item.last_error || label)}"><i class="ti ${icon}"></i>${escapeHtml(label)}</span></td>
-      <td><strong class="outlook-mail-count${hasCount ? '' : ' pending'}">${hasCount ? count : '未统计'}</strong></td>
       <td><time class="outlook-mail-time" title="${escapeHtml(item.imported_at || '')}">${escapeHtml(formatTime(item.imported_at))}</time></td>
-      <td><time class="outlook-mail-time" title="${escapeHtml(item.mail_count_checked_at || '')}">${escapeHtml(formatTime(item.mail_count_checked_at))}</time></td>
       <td class="mail-note-cell"><span class="${error ? 'error' : ''}" title="${escapeHtml(error || '状态正常')}">${escapeHtml(error || '状态正常')}</span></td>`
     body.appendChild(row)
   })
@@ -928,21 +922,6 @@ async function loadOutlookMails(page = null) {
   const payload = await api(`/api/outlook-mails?${params.toString()}`)
   renderOutlookMails(payload)
   return payload
-}
-
-async function refreshOutlookMailCounts() {
-  const button = $('#refreshOutlookMailCountsButton')
-  setBusy(button, true, '统计中')
-  try {
-    const result = await api('/api/outlook-mails/refresh-counts', {
-      method: 'POST',
-      body: JSON.stringify({ all: true, mailbox_ids: [] }),
-    })
-    await loadOutlookMails(state.outlookMailPage)
-    toast(`邮件数统计完成：成功 ${result.updated || 0}，失败 ${result.failed || 0}`)
-  } finally {
-    setBusy(button, false)
-  }
 }
 
 async function importOutlookPool(source = 'settings') {
@@ -1325,7 +1304,6 @@ $('#outlookPoolImportButton').addEventListener('click', () => importOutlookPool(
 $('#outlookPoolPageImportButton').addEventListener('click', () => importOutlookPool('page').catch((error) => toast(error.message, 'error')))
 $('#reloadOutlookPoolButton').addEventListener('click', () => loadOutlookPool().catch((error) => toast(error.message, 'error')))
 $('#reloadOutlookMailsButton').addEventListener('click', () => loadOutlookMails().catch((error) => toast(error.message, 'error')))
-$('#refreshOutlookMailCountsButton').addEventListener('click', () => refreshOutlookMailCounts().catch((error) => toast(error.message, 'error')))
 $('#exportOutlookMailsButton').addEventListener('click', () => { window.location.href = '/api/outlook-mails/export.txt?format=detail' })
 $('#deleteSelectedOutlookButton').addEventListener('click', () => deleteSelectedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
 $('#clearOutlookPoolButton').addEventListener('click', () => clearOutlookPool().catch((error) => toast(error.message, 'error')))
