@@ -295,12 +295,14 @@ function renderProviderJob(provider, job) {
   $(`#${prefix}ProgressElapsed`).textContent = formatDuration(current.elapsed_seconds)
 
   const startButton = $(`#${prefix}StartButton`)
+  const forceButton = $(`#${prefix}ForceButton`)
   const stopButton = $(`#${prefix}StopButton`)
   const countInput = $(`#${prefix}RunCount`)
   const concurrencyInput = $(`#${prefix}RunConcurrency`)
   const pendingStart = state.pendingJobStarts.has(resolved)
   const pendingStop = state.pendingJobStops.has(resolved)
   startButton.disabled = active || pendingStart
+  if (forceButton) forceButton.disabled = active || pendingStart
   stopButton.disabled = !active || current.state === 'stopping' || pendingStop
   countInput.disabled = active
   concurrencyInput.disabled = active
@@ -1184,21 +1186,22 @@ async function saveRegistrationConcurrency(provider) {
   toast(`${registrationProviderName(resolved)} 注册并发已保存`)
 }
 
-async function startRegistration(provider) {
+async function startRegistration(provider, options = {}) {
   const resolved = resolveRegistrationProvider(provider)
+  const force = Boolean(options.force)
   const inputs = registrationInputs(resolved)
   const count = Number(inputs.count.value)
   const concurrency = Number(inputs.concurrency.value)
   if (!Number.isInteger(count) || count < 1 || count > 100) return toast('注册数量需要在 1 到 100 之间', 'error')
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 50) return toast('并发数需要在 1 到 50 之间', 'error')
   if (jobIsActive(jobFor(resolved))) return toast(`${registrationProviderName(resolved)} 注册任务正在运行`, 'warning')
-  const button = $(`#${resolved}StartButton`)
+  const button = $(`#${resolved}${force ? 'Force' : 'Start'}Button`)
   state.pendingJobStarts.add(resolved)
   setBusy(button, true, '启动中')
   try {
     const job = await api('/api/registration/start', {
       method: 'POST',
-      body: JSON.stringify({ count, concurrency, provider: resolved, channel: registrationChannel() }),
+      body: JSON.stringify({ count, concurrency, provider: resolved, channel: registrationChannel(), force }),
     })
     const dashboard = await api('/api/dashboard')
     if (!dashboard.jobs || typeof dashboard.jobs !== 'object') {
@@ -1207,12 +1210,16 @@ async function startRegistration(provider) {
     renderDashboard(dashboard)
     state.registrationDrafts[resolved] = { count, concurrency }
     if (job.state === 'skipped') toast(job.message || '云端容量充足，本轮已跳过', 'warning')
-    else toast(`${registrationProviderName(resolved)} 注册任务已启动`)
+    else toast(force ? `${registrationProviderName(resolved)} 强制补号任务已启动` : `${registrationProviderName(resolved)} 注册任务已启动`)
   } finally {
     state.pendingJobStarts.delete(resolved)
     setBusy(button, false)
     renderProviderJob(resolved, jobFor(resolved))
   }
+}
+
+function forceRegistration(provider) {
+  return startRegistration(provider, { force: true })
 }
 
 async function stopRegistration(provider) {
@@ -1310,6 +1317,7 @@ $$('input[name="registrationChannel"]').forEach((input) => input.addEventListene
   renderProviderJob('openai', jobFor('openai'))
 }))
 $$('[data-start-provider]').forEach((button) => button.addEventListener('click', () => startRegistration(button.dataset.startProvider).catch((error) => toast(error.message, 'error'))))
+$$('[data-force-provider]').forEach((button) => button.addEventListener('click', () => forceRegistration(button.dataset.forceProvider).catch((error) => toast(error.message, 'error'))))
 $$('[data-stop-provider]').forEach((button) => button.addEventListener('click', () => stopRegistration(button.dataset.stopProvider).catch((error) => toast(error.message, 'error'))))
 $('#monitorButton').addEventListener('click', () => toggleMonitor().catch((error) => toast(error.message, 'error')))
 $('#saveSettingsButton').addEventListener('click', () => saveSettings().catch((error) => toast(error.message, 'error')))

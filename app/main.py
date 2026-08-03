@@ -177,6 +177,7 @@ class StartRequest(BaseModel):
     count: int = Field(ge=1, le=100)
     concurrency: int = Field(ge=1, le=50)
     channel: str | None = None
+    force: bool = False
 
     @field_validator("channel")
     @classmethod
@@ -672,7 +673,7 @@ def create_app(
         effective_count = body.count
         capacity_payload: dict[str, Any] | None = None
         cloud_settings = settings.get("cloud") if isinstance(settings.get("cloud"), dict) else {}
-        if bool(cloud_settings.get("enabled")):
+        if bool(cloud_settings.get("enabled")) and not body.force:
             server = str(cloud_settings.get("server") or "").strip()
             auth_key = str(cloud_settings.get("auth_key") or "").strip()
             if not server or not auth_key:
@@ -709,12 +710,15 @@ def create_app(
                         effective_count = min(body.count, max(1, need))
                         runtime_manager.log("info", f"按云端缺口启动注册：目标 {effective_count} 个")
         try:
+            if body.force:
+                runtime_manager.log("warning", f"强制补号：按页面数量 {body.count}、并发 {body.concurrency} 启动")
             result = runtime_manager.start(
                 count=effective_count,
                 concurrency=body.concurrency,
                 channel=registration_channel,
             )
             result["requested_count"] = body.count
+            result["forced"] = body.force
             if capacity_payload is not None:
                 result["cloud_capacity"] = capacity_payload
             return result
