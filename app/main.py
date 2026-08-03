@@ -19,6 +19,7 @@ from app.cloud import CloudClient, capacity_estimate
 from app.health import AccountHealthService
 from app.manager import RegistrationManager
 from app.monitor import CloudRegistrationMonitor
+from app.notifications import BarkStockNotifier
 from app.registration.outlook import OutlookMailboxPool, OutlookMailClient
 from app.storage import DEFAULT_SETTINGS, JsonStore, deep_merge
 
@@ -124,6 +125,22 @@ class CloudSettings(BaseModel):
         return clean
 
 
+class NotificationSettings(BaseModel):
+    bark_enabled: bool = False
+    bark_url: str = Field(default="https://api.day.app", max_length=500)
+    bark_key: str = Field(default="", max_length=500)
+    bark_low_stock_threshold: int = Field(default=100, ge=1, le=100000)
+    bark_check_interval_seconds: int = Field(default=30, ge=5, le=3600)
+
+    @field_validator("bark_url")
+    @classmethod
+    def validate_bark_url(cls, value: str) -> str:
+        clean = value.strip().rstrip("/")
+        if not clean.startswith(("http://", "https://")):
+            raise ValueError("Bark 地址必须以 http:// 或 https:// 开头")
+        return clean
+
+
 class FlareSolverrSettings(BaseModel):
     enabled: bool = False
     url: str = Field(default="http://flaresolverr:8191", max_length=500)
@@ -150,6 +167,7 @@ class SettingsRequest(BaseModel):
     registration: RegistrationSettings
     mail: MailSettings
     cloud: CloudSettings
+    notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     flaresolverr: FlareSolverrSettings
     sentinel: SentinelSettings
     health: HealthSettings
@@ -262,6 +280,7 @@ def create_app(
     runtime_manager = manager or RegistrationManager(runtime_store)
     runtime_monitor = monitor or CloudRegistrationMonitor(runtime_store, runtime_manager)
     runtime_health = health_service or AccountHealthService(runtime_store, runtime_manager)
+    runtime_bark = BarkStockNotifier(runtime_store, runtime_manager)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -272,9 +291,11 @@ def create_app(
             runtime_manager.log("warning", f"已清理 Outlook 号池残留租约：{cleared_outlook_leases} 个")
         runtime_health.start()
         runtime_monitor.start()
+        runtime_bark.start()
         try:
             yield
         finally:
+            runtime_bark.shutdown()
             runtime_monitor.shutdown()
             runtime_health.shutdown()
             runtime_manager.shutdown()
@@ -284,6 +305,7 @@ def create_app(
     app.state.manager = runtime_manager
     app.state.monitor = runtime_monitor
     app.state.health_service = runtime_health
+    app.state.bark_notifier = runtime_bark
 
     def current_user(session_token: str | None = Cookie(default=None, alias=COOKIE_NAME)) -> str:
         session = signer.verify(session_token or "")
@@ -356,6 +378,7 @@ def create_app(
             "job": job_status,
             "jobs": job_status.get("providers", {}),
             "monitor": runtime_monitor.status(),
+            "bark": runtime_bark.status(),
             "health": runtime_health.status(),
             "accounts": await run_in_threadpool(runtime_manager.account_summary),
         }

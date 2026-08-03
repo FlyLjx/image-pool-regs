@@ -486,6 +486,7 @@ function fillSettings(settings) {
   const registration = settings.registration || {}
   const mail = settings.mail || {}
   const cloud = settings.cloud || {}
+  const notifications = settings.notifications || {}
   const flare = settings.flaresolverr || {}
   const sentinel = settings.sentinel || {}
   const health = settings.health || {}
@@ -516,6 +517,11 @@ function fillSettings(settings) {
   $('#cloudMonitorConcurrency').value = cloud.monitor_concurrency || 5
   $('#cloudShortageConfirmations').value = cloud.shortage_confirmations || 2
   $('#cloudMonitorBatchLimit').value = cloud.monitor_batch_limit || 20
+  $('#barkEnabled').checked = Boolean(notifications.bark_enabled)
+  $('#barkUrl').value = notifications.bark_url || 'https://api.day.app'
+  $('#barkKey').value = notifications.bark_key || ''
+  $('#barkLowStockThreshold').value = notifications.bark_low_stock_threshold || 100
+  $('#barkCheckInterval').value = notifications.bark_check_interval_seconds || 30
   $('#proxyUrl').value = registration.proxy || ''
   $('#browserProfile').value = registration.browser_profile || 'chrome_windows'
   $('#browserEngine').value = registration.browser_engine || 'camoufox'
@@ -583,6 +589,13 @@ function collectSettings() {
       monitor_concurrency: Number($('#cloudMonitorConcurrency').value),
       shortage_confirmations: Number($('#cloudShortageConfirmations').value),
       monitor_batch_limit: Number($('#cloudMonitorBatchLimit').value),
+    },
+    notifications: {
+      bark_enabled: $('#barkEnabled').checked,
+      bark_url: $('#barkUrl').value.trim(),
+      bark_key: $('#barkKey').value.trim(),
+      bark_low_stock_threshold: Number($('#barkLowStockThreshold').value),
+      bark_check_interval_seconds: Number($('#barkCheckInterval').value),
     },
     flaresolverr: {
       enabled: $('#flareEnabled').checked,

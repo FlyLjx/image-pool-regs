@@ -49,6 +49,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "shortage_confirmations": 2,
         "monitor_batch_limit": 20,
     },
+    "notifications": {
+        "bark_enabled": False,
+        "bark_url": "https://api.day.app",
+        "bark_key": "",
+        "bark_low_stock_threshold": 100,
+        "bark_check_interval_seconds": 30,
+    },
     "flaresolverr": {
         "enabled": False,
         "url": "http://flaresolverr:8191",

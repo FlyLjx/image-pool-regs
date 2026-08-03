@@ -338,6 +338,17 @@
             </section>
 
             <section class="panel settings-section">
+              <header class="panel-head"><div><i class="ti ti-bell-ringing"></i><span><strong>Bark 库存通知</strong><small>Outlook 可注册量不足时推送</small></span></div></header>
+              <div class="form-grid">
+                <label class="toggle-row span-2"><span><strong>启用 Bark 通知</strong><small>仅 Outlook 邮箱池低于阈值时发送</small></span><input id="barkEnabled" type="checkbox"><i></i></label>
+                <label class="field span-2"><span>Bark 地址</span><input id="barkUrl" type="url" placeholder="https://api.day.app"></label>
+                <label class="field span-2"><span>Bark Key</span><span class="input-wrap"><i class="ti ti-key"></i><input id="barkKey" type="password" autocomplete="off" placeholder="填入 Bark Key"></span></label>
+                <label class="field"><span>低库存阈值</span><input id="barkLowStockThreshold" type="number" min="1" max="100000" value="100"></label>
+                <label class="field"><span>检查间隔（秒）</span><input id="barkCheckInterval" type="number" min="5" max="3600" value="30"></label>
+              </div>
+            </section>
+
+            <section class="panel settings-section">
               <header class="panel-head"><div><i class="ti ti-brand-windows"></i><span><strong>Outlook 邮箱池</strong><small id="outlookPoolStatus">读取邮箱池状态</small></span></div><button id="outlookPoolImportButton" class="button secondary" type="button"><i class="ti ti-file-import"></i><span>导入邮箱池</span></button></header>
               <div class="form-grid">
                 <label class="field span-2"><span>账号列表</span><textarea id="outlookPoolInput" placeholder="邮箱----密码----Client ID----Refresh Token&#10;每行一个账号"></textarea></label>
@@ -423,6 +434,6 @@
   </div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-  <script src="/app.js?v=20260803-delete-outlook-failed-1" defer></script>
+  <script src="/app.js?v=20260803-bark-stock-notify-1" defer></script>
 </body>
 </html>

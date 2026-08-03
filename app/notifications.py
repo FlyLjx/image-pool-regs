@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+import copy
+import json
+import threading
+from datetime import datetime, timezone
+from urllib.parse import quote
+from urllib.request import Request, urlopen
+from typing import Any
+
+from app.registration.outlook import OutlookMailboxPool
+from app.storage import JsonStore
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class BarkStockNotifier:
+    """Notify once when the Outlook registration pool drops below a threshold."""
+
+    def __init__(self, store: JsonStore, manager: Any, minimum_interval: float = 5.0) -> None:
+        self.store = store
+        self.manager = manager
+        self.minimum_interval = max(1.0, float(minimum_interval))
+        self._shutdown = threading.Event()
+        self._wake = threading.Event()
+        self._lock = threading.RLock()
+        self._thread: threading.Thread | None = None
+        self._notified_low = False
+        self._last_error = ""
+        self._state: dict[str, Any] = {
+            "enabled": False,
+            "state": "disabled",
+            "available_slots": 0,
+            "threshold": 100,
+            "last_checked_at": "",
+            "last_notified_at": "",
+            "last_error": "",
+            "message": "Bark 低库存通知未开启",
+        }
+
+    def start(self) -> None:
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                return
+            self._shutdown.clear()
+            self._thread = threading.Thread(target=self._run, name="bark-stock-notifier", daemon=True)
+            self._thread.start()
+
+    def shutdown(self) -> None:
+        self._shutdown.set()
+        self._wake.set()
+        thread = self._thread
+        if thread and thread.is_alive():
+            thread.join(timeout=5)
+
+    def wake(self) -> None:
+        self._wake.set()
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            result = copy.deepcopy(self._state)
+            result["thread_alive"] = bool(self._thread and self._thread.is_alive())
+        return result
+
+    def _wait(self, seconds: float) -> None:
+        self._wake.wait(timeout=max(0.01, seconds))
+        self._wake.clear()
+
+    @staticmethod
+    def _bark_url(base: str, key: str, title: str, body: str) -> str:
+        endpoint = str(base or "https://api.day.app").strip().rstrip("/")
+        if "{key}" in endpoint:
+            endpoint = endpoint.replace("{key}", quote(key, safe=""))
+        elif key:
+            endpoint = f"{endpoint}/{quote(key, safe='')}"
+        return f"{endpoint}/{quote(title, safe='')}/{quote(body, safe='')}"
+
+    def _send(self, url: str, key: str, title: str, body: str) -> None:
+        target = self._bark_url(url, key, title, body)
+        request = Request(target, headers={"User-Agent": "GPT-REG-TOOLS/1.0", "Accept": "application/json"})
+        with urlopen(request, timeout=10) as response:
+            if int(getattr(response, "status", 200) or 200) >= 400:
+                raise RuntimeError(f"Bark HTTP {response.status}")
+            response.read(256)
+
+    def _run(self) -> None:
+        while not self._shutdown.is_set():
+            try:
+                settings = self.store.settings()
+                notifications = settings.get("notifications") if isinstance(settings.get("notifications"), dict) else {}
+                enabled = bool(notifications.get("bark_enabled", False))
+                endpoint = str(notifications.get("bark_url") or "https://api.day.app").strip()
+                key = str(notifications.get("bark_key") or "").strip()
+                threshold = max(1, min(100000, int(notifications.get("bark_low_stock_threshold") or 100)))
+                interval = max(
+                    self.minimum_interval,
+                    float(notifications.get("bark_check_interval_seconds") or 30),
+                )
+                mail = settings.get("mail") if isinstance(settings.get("mail"), dict) else {}
+                provider = str(mail.get("provider") or "yyds").strip().lower()
+                if not enabled or not key:
+                    with self._lock:
+                        self._state.update({
+                            "enabled": enabled,
+                            "state": "disabled" if not enabled else "waiting",
+                            "threshold": threshold,
+                            "last_error": "",
+                            "message": "请在设置中填写 Bark Key" if enabled else "Bark 低库存通知未开启",
+                        })
+                    self._notified_low = False
+                    self._wait(interval)
+                    continue
+                if provider != "outlook":
+                    with self._lock:
+                        self._state.update({
+                            "enabled": True,
+                            "state": "skipped",
+                            "threshold": threshold,
+                            "last_error": "",
+                            "message": "当前注册邮箱来源不是 Outlook",
+                        })
+                    self._notified_low = False
+                    self._wait(interval)
+                    continue
+
+                split_limit = int(mail.get("outlook_split_limit") or 5)
+                summary = OutlookMailboxPool(self.store.path("outlook_mailboxes.json")).summary(split_limit)
+                available_slots = int(summary.get("available_slots") or 0)
+                checked_at = _now()
+                with self._lock:
+                    self._state.update({
+                        "enabled": True,
+                        "state": "low" if available_slots < threshold else "normal",
+                        "available_slots": available_slots,
+                        "threshold": threshold,
+                        "last_checked_at": checked_at,
+                        "last_error": "",
+                        "message": f"可注册量 {available_slots}，阈值 {threshold}" if available_slots < threshold else f"可注册量 {available_slots}",
+                    })
+                if available_slots >= threshold:
+                    self._notified_low = False
+                elif not self._notified_low:
+                    title = "GPT 注册号池库存不足"
+                    body = f"Outlook 可注册量仅剩 {available_slots} 个，低于阈值 {threshold} 个。"
+                    self._send(endpoint, key, title, body)
+                    self._notified_low = True
+                    with self._lock:
+                        self._state["last_notified_at"] = checked_at
+                        self._state["message"] = f"已通过 Bark 通知：可注册量 {available_slots}"
+                    self.manager.log("warning", f"Bark 低库存通知已发送：Outlook 可注册量 {available_slots}，阈值 {threshold}")
+                self._last_error = ""
+                self._wait(interval)
+            except Exception as exc:
+                detail = str(exc)[:500]
+                with self._lock:
+                    self._state["state"] = "error"
+                    self._state["last_error"] = detail
+                    self._state["message"] = detail
+                if detail != self._last_error:
+                    self.manager.log("error", f"Bark 低库存通知异常：{detail}")
+                    self._last_error = detail
+                self._wait(self.minimum_interval)
