@@ -572,6 +572,16 @@ def create_app(
         runtime_manager.log("warning", f"Outlook 邮箱池{operation}：{result['removed']} 个")
         return {"ok": True, **result}
 
+    @app.delete("/api/outlook-pool/failed")
+    async def delete_failed_outlook_pool(
+        _user: str = Depends(current_user),
+    ) -> dict[str, Any]:
+        result = await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).delete_failed,
+        )
+        runtime_manager.log("warning", f"Outlook 异常邮箱已全部删除：{result['removed']} 个")
+        return {"ok": True, **result}
+
     @app.put("/api/settings/registration/concurrency")
     async def save_registration_concurrency(
         body: RegistrationConcurrencyRequest,

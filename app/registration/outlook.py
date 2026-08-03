@@ -382,6 +382,16 @@ class OutlookMailboxPool:
                 self._write_unlocked(remaining)
             return {**self._summary(remaining), "removed": removed}
 
+    def delete_failed(self) -> dict[str, int]:
+        """Remove only mailboxes explicitly marked as failed."""
+        with self._lock:
+            entries = self._read_unlocked()
+            remaining = [item for item in entries if str(item.get("status") or "") != "failed"]
+            removed = len(entries) - len(remaining)
+            if removed:
+                self._write_unlocked(remaining)
+            return {**self._summary(remaining), "removed": removed}
+
     @staticmethod
     def _alias(email: str, tag: str) -> str:
         local, domain = str(email).rsplit("@", 1)

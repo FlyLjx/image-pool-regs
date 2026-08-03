@@ -710,6 +710,7 @@ function updateOutlookPoolSelectionUi() {
     ? `删除所选 (${state.outlookPoolSelected.size})`
     : '删除所选'
   $('#clearOutlookPoolButton').disabled = Number(state.outlookPool?.summary?.total || 0) === 0
+  $('#deleteFailedOutlookButton').disabled = Number(state.outlookPool?.summary?.failed || 0) === 0
   $$('[data-outlook-select-id]').forEach((input) => {
     const selected = state.outlookPoolSelected.has(input.dataset.outlookSelectId)
     input.checked = selected
@@ -982,6 +983,23 @@ async function clearOutlookPool() {
     state.outlookPoolSelected.clear()
     await loadOutlookPool(1)
     toast(`Outlook 号池已清空：删除 ${result.removed || 0} 个邮箱`)
+  } finally {
+    setBusy(button, false)
+    updateOutlookPoolSelectionUi()
+  }
+}
+
+async function deleteFailedOutlookMailboxes() {
+  const failed = Number(state.outlookPool?.summary?.failed || 0)
+  if (!failed) return
+  if (!window.confirm(`确定删除全部 ${failed} 个异常 Outlook 邮箱？删除后不可从本地号池恢复。`)) return
+  const button = $('#deleteFailedOutlookButton')
+  setBusy(button, true, '删除中')
+  try {
+    const result = await api('/api/outlook-pool/failed', { method: 'DELETE' })
+    state.outlookPoolSelected.clear()
+    await loadOutlookPool(1)
+    toast(`异常邮箱已删除：${result.removed || 0} 个`)
   } finally {
     setBusy(button, false)
     updateOutlookPoolSelectionUi()
@@ -1290,6 +1308,7 @@ $('#refreshOutlookMailCountsButton').addEventListener('click', () => refreshOutl
 $('#exportOutlookMailsButton').addEventListener('click', () => { window.location.href = '/api/outlook-mails/export.txt?format=detail' })
 $('#deleteSelectedOutlookButton').addEventListener('click', () => deleteSelectedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
 $('#clearOutlookPoolButton').addEventListener('click', () => clearOutlookPool().catch((error) => toast(error.message, 'error')))
+$('#deleteFailedOutlookButton').addEventListener('click', () => deleteFailedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
 $('#changePasswordButton').addEventListener('click', () => changePassword().catch((error) => toast(error.message, 'error')))
 $('#exportAccountsButton').addEventListener('click', () => { window.location.href = '/api/accounts/export' })
 $('#accountsPrevPage').addEventListener('click', () => loadAccounts(state.accountPage - 1).catch((error) => toast(error.message, 'error')))
