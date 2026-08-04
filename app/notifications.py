@@ -9,6 +9,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from typing import Any
 
+from app.cloud import CloudClient, capacity_estimate
 from app.registration.outlook import OutlookMailboxPool
 from app.storage import JsonStore
 
@@ -110,6 +111,7 @@ class BarkStockNotifier:
         provider: str,
         summary: dict[str, Any],
         registration_report: dict[str, Any],
+        cloud_estimate: dict[str, Any] | None = None,
     ) -> str:
         today = registration_report.get("today") if isinstance(registration_report.get("today"), dict) else {}
         total = registration_report.get("total") if isinstance(registration_report.get("total"), dict) else {}
@@ -119,7 +121,7 @@ class BarkStockNotifier:
         current_pool_total = max(0, int(summary.get("total") or 0))
         if recorded_total == 0:
             recorded_total = current_pool_total
-        return (
+        lines = [
             f"邮箱来源：{provider_label}\n"
             f"今日注册成功率：{float(today.get('success_rate') or 0):g}% "
             f"（成功 {int(today.get('success') or 0)} / 尝试 {int(today.get('attempts') or 0)}）\n"
@@ -127,7 +129,27 @@ class BarkStockNotifier:
             f"（成功 {int(total.get('success') or 0)} / 尝试 {int(total.get('attempts') or 0)}）\n"
             f"邮箱导入：今日 {imports['today_added']} 个，累计 {recorded_total} 个（当前池 {current_pool_total} 个）\n"
             f"剩余可注册数：{int(summary.get('available_slots') or 0)} 个"
-        )
+        ]
+        if cloud_estimate:
+            lines.append(
+                "云端账号："
+                f"可调度槽位 {int(cloud_estimate.get('dispatchable_slots') or 0)}，"
+                f"空闲 {int(cloud_estimate.get('idle_slots') or 0)}，"
+                f"租用 {int(cloud_estimate.get('leased_slots') or 0)}，"
+                f"冷却 {int(cloud_estimate.get('cooling') or 0)}，"
+                f"受限 {int(cloud_estimate.get('limited') or 0)}，"
+                f"无效 {int(cloud_estimate.get('invalid') or 0)}，"
+                f"死号 {int(cloud_estimate.get('dead') or 0)}"
+            )
+        return "\n".join(lines)
+
+    def _cloud_report(self, settings: dict[str, Any]) -> dict[str, Any]:
+        cloud = settings.get("cloud") if isinstance(settings.get("cloud"), dict) else {}
+        if not bool(cloud.get("enabled")) or not str(cloud.get("server") or "").strip():
+            return {}
+        registration = settings.get("registration") if isinstance(settings.get("registration"), dict) else {}
+        payload = CloudClient(cloud, str(registration.get("proxy") or "")).capacity()
+        return capacity_estimate(payload)
 
     def _run(self) -> None:
         while not self._shutdown.is_set():
@@ -202,7 +224,17 @@ class BarkStockNotifier:
 
                 if report_enabled and time.monotonic() - self._last_report_monotonic >= report_interval:
                     try:
-                        body = self._report_body(provider, summary, self.manager.registration_report())
+                        cloud_estimate = {}
+                        try:
+                            cloud_estimate = self._cloud_report(settings)
+                        except Exception as exc:
+                            self.manager.log("warning", f"Bark 汇报读取云端容量失败：{str(exc)[:300]}")
+                        body = self._report_body(
+                            provider,
+                            summary,
+                            self.manager.registration_report(),
+                            cloud_estimate,
+                        )
                         self._send(endpoint, key, "GPT 注册每小时汇报", body)
                         self._last_report_monotonic = time.monotonic()
                         with self._lock:

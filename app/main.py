@@ -632,7 +632,11 @@ def create_app(
                         "云端容量评估："
                         f"status={status}，建议注册={need}，"
                         f"当前可调度={estimate['current_effective_accounts']}，"
-                        f"缺可用={estimate['recommended_add_usable_accounts']}",
+                        f"缺可用={estimate['recommended_add_usable_accounts']}，"
+                        f"dispatchable_slots={estimate['dispatchable_slots']}，"
+                        f"idle_slots={estimate['idle_slots']}，leased_slots={estimate['leased_slots']}，"
+                        f"cooling={estimate['cooling']}，limited={estimate['limited']}，"
+                        f"invalid={estimate['invalid']}，dead={estimate['dead']}",
                     )
                     if status in {"idle", "enough", "saturated"} or need <= 0:
                         message = estimate["message"] or "云端容量充足，本轮跳过注册"

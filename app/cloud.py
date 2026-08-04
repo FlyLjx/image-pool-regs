@@ -98,29 +98,70 @@ def account_import_payload(account: dict[str, Any]) -> dict[str, Any]:
 def capacity_estimate(payload: dict[str, Any]) -> dict[str, Any]:
     root = payload if isinstance(payload, dict) else {}
     estimate = root.get("estimate") if isinstance(root.get("estimate"), dict) else {}
+    accounts = root.get("accounts") if isinstance(root.get("accounts"), dict) else {}
+    registration = root.get("registration") if isinstance(root.get("registration"), dict) else {}
 
     def value(name: str, default: Any = None) -> Any:
         return estimate.get(name, root.get(name, default))
 
-    status = str(value("status") or "").strip().lower()
-    if status not in {"idle", "enough", "saturated", "shortage"}:
-        status = "unknown"
+    def account_value(name: str, default: Any = 0) -> Any:
+        return accounts.get(name, root.get(f"accounts_{name}", default))
+
+    def registration_value(name: str, default: Any = 0) -> Any:
+        return registration.get(name, root.get(f"registration_{name}", default))
+
+    missing = object()
+    raw_recommended = estimate.get(
+        "recommended_register_accounts",
+        root.get("recommended_register_accounts", missing),
+    )
+    if raw_recommended is missing:
+        raw_recommended = registration_value("need_usable_accounts", 0)
+    raw_add_usable = estimate.get(
+        "recommended_add_usable_accounts",
+        root.get("recommended_add_usable_accounts", missing),
+    )
+    if raw_add_usable is missing:
+        raw_add_usable = registration_value("need_usable_accounts", 0)
+
+    dispatchable_slots = _bounded_int(account_value("dispatchable_slots"), 0, 0, 1_000_000)
+    idle_slots = _bounded_int(account_value("idle_slots"), 0, 0, 1_000_000)
+    leased_slots = _bounded_int(account_value("leased_slots"), 0, 0, 1_000_000)
+    cooling = _bounded_int(account_value("cooling"), 0, 0, 1_000_000)
+    limited = _bounded_int(account_value("limited"), 0, 0, 1_000_000)
+    invalid = _bounded_int(account_value("invalid"), 0, 0, 1_000_000)
+    dead = _bounded_int(account_value("dead"), 0, 0, 1_000_000)
+    usable = _bounded_int(account_value("usable"), 0, 0, 100_000)
+    dispatchable = _bounded_int(account_value("dispatchable"), 0, 0, 100_000)
+    total = _bounded_int(account_value("total"), 0, 0, 100_000)
+
+    raw_status = str(value("status") or "").strip().lower()
+    status = raw_status if raw_status in {"idle", "enough", "saturated", "shortage"} else ""
+    if not status:
+        registration_status = str(registration_value("status", "") or "").strip().lower()
+        status = registration_status if registration_status in {"idle", "enough", "saturated", "shortage"} else ""
+    if not status:
+        fallback_recommended = _bounded_int(raw_recommended, 0, 0, 100_000)
+        status = "shortage" if fallback_recommended > 0 else ("enough" if dispatchable_slots or usable else "unknown")
+
     result = {
         "status": status,
-        "recommended_register_accounts": _bounded_int(
-            value("recommended_register_accounts"), 0, 0, 100_000
-        ),
-        "recommended_add_usable_accounts": _bounded_int(
-            value("recommended_add_usable_accounts"), 0, 0, 100_000
-        ),
+        "recommended_register_accounts": _bounded_int(raw_recommended, 0, 0, 100_000),
+        "recommended_add_usable_accounts": _bounded_int(raw_add_usable, 0, 0, 100_000),
         "current_effective_accounts": _bounded_int(
-            value("current_effective_accounts"), 0, 0, 100_000
+            value("current_effective_accounts", registration_value("current_usable_accounts", dispatchable or usable)),
+            0,
+            0,
+            100_000,
         ),
         "current_effective_inflight_slots": _bounded_int(
-            value("current_effective_inflight_slots"), 0, 0, 1_000_000
+            value("current_effective_inflight_slots", dispatchable_slots), 0, 0, 1_000_000
         ),
         "recommended_required_usable_accounts": _bounded_int(
-            value("recommended_required_usable_accounts"), 0, 0, 100_000
+            value("recommended_required_usable_accounts", registration_value("target_usable_accounts", 0)),
+            0,
+            0,
+            100_000,
         ),
         "recommended_required_inflight_slots": _bounded_int(
             value("recommended_required_inflight_slots"), 0, 0, 1_000_000
@@ -128,6 +169,19 @@ def capacity_estimate(payload: dict[str, Any]) -> dict[str, Any]:
         "estimated_quota_capacity": max(0.0, float(value("estimated_quota_capacity") or 0)),
         "average_quota_per_usable_account": max(0.0, float(value("average_quota_per_usable_account") or 0)),
         "message": str(value("message") or "").strip(),
+        "dispatchable_slots": dispatchable_slots,
+        "idle_slots": idle_slots,
+        "leased_slots": leased_slots,
+        "cooling": cooling,
+        "limited": limited,
+        "invalid": invalid,
+        "dead": dead,
+        "accounts_total": total,
+        "accounts_usable": usable,
+        "accounts_dispatchable": dispatchable,
+        "registration_status": str(registration_value("status", "") or "").strip().lower(),
+        "registration_pending_tasks": _bounded_int(registration_value("pending_tasks"), 0, 0, 1_000_000),
+        "registration_need_usable_accounts": _bounded_int(registration_value("need_usable_accounts"), 0, 0, 100_000),
     }
     return result
 

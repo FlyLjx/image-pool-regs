@@ -114,6 +114,44 @@ def test_cloud_retries_transient_response_and_supports_flat_capacity(monkeypatch
     assert len(session.calls) == 2
 
 
+def test_capacity_estimate_supports_nested_account_dispatch_slots():
+    estimate = capacity_estimate(
+        {
+            "accounts": {
+                "total": 76,
+                "usable": 22,
+                "dispatchable": 22,
+                "dispatchable_slots": 66,
+                "idle_slots": 49,
+                "leased_slots": 17,
+                "cooling": 2,
+                "limited": 8,
+                "invalid": 1,
+                "dead": 3,
+            },
+            "registration": {
+                "status": "registering",
+                "need_usable_accounts": 11,
+                "pending_tasks": 29,
+            },
+        }
+    )
+
+    assert estimate["status"] == "shortage"
+    assert estimate["recommended_register_accounts"] == 11
+    assert estimate["recommended_add_usable_accounts"] == 11
+    assert estimate["current_effective_accounts"] == 22
+    assert estimate["current_effective_inflight_slots"] == 66
+    assert estimate["dispatchable_slots"] == 66
+    assert estimate["idle_slots"] == 49
+    assert estimate["leased_slots"] == 17
+    assert estimate["cooling"] == 2
+    assert estimate["limited"] == 8
+    assert estimate["invalid"] == 1
+    assert estimate["dead"] == 3
+    assert estimate["registration_pending_tasks"] == 29
+
+
 class ApiFakeRegistrar:
     def __init__(self, _settings, logger, stop_event):
         self.logger = logger

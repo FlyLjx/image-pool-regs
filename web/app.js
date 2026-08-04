@@ -347,7 +347,12 @@ function renderDashboard(payload) {
   const monitorEnabled = Boolean(monitor.enabled)
   $('#monitorState').textContent = monitorEnabled ? '监听中' : '未开启'
   $('#monitorState').className = monitorEnabled ? 'active' : ''
-  $('#monitorMeta').textContent = monitor.message || (monitorEnabled ? '等待容量检查' : '自动监听未开启')
+  const capacityDetail = monitorEnabled && (
+    monitor.dispatchable_slots !== undefined || monitor.idle_slots !== undefined
+  )
+    ? ` · 槽位 ${Number(monitor.dispatchable_slots) || 0} · 空闲 ${Number(monitor.idle_slots) || 0} · 租用 ${Number(monitor.leased_slots) || 0} · 冷却 ${Number(monitor.cooling) || 0} · 受限 ${Number(monitor.limited) || 0} · 无效 ${Number(monitor.invalid) || 0} · 死号 ${Number(monitor.dead) || 0}`
+    : ''
+  $('#monitorMeta').textContent = `${monitor.message || (monitorEnabled ? '等待容量检查' : '自动监听未开启')}${capacityDetail}`
   const monitorButton = $('#monitorButton')
   monitorButton.innerHTML = monitorEnabled
     ? '<i class="ti ti-radar-off"></i><span>停止监听</span>'

@@ -40,6 +40,13 @@ class CloudRegistrationMonitor:
             "capacity_status": "",
             "recommended_register_accounts": 0,
             "current_effective_accounts": 0,
+            "dispatchable_slots": 0,
+            "idle_slots": 0,
+            "leased_slots": 0,
+            "cooling": 0,
+            "limited": 0,
+            "invalid": 0,
+            "dead": 0,
             "shortage_observations": 0,
             "shortage_confirmations": 0,
             "last_job_id": "",
@@ -146,14 +153,22 @@ class CloudRegistrationMonitor:
         status = estimate["status"]
         need = int(estimate["recommended_register_accounts"] or 0)
         confirmations = max(1, min(10, int(cloud.get("shortage_confirmations") or 2)))
-        signature = f"{status}:{need}:{estimate['current_effective_accounts']}"
+        signature = (
+            f"{status}:{need}:{estimate['current_effective_accounts']}:{estimate['dispatchable_slots']}"
+            f":{estimate['idle_slots']}:{estimate['leased_slots']}:{estimate['cooling']}"
+            f":{estimate['limited']}:{estimate['invalid']}:{estimate['dead']}"
+        )
         if signature != self._last_signature:
             self.manager.log(
                 "info",
                 "自动监听容量："
                 f"status={status}，建议注册={need}，"
                 f"当前可调度={estimate['current_effective_accounts']}，"
-                f"缺可用={estimate['recommended_add_usable_accounts']}",
+                f"缺可用={estimate['recommended_add_usable_accounts']}，"
+                f"dispatchable_slots={estimate['dispatchable_slots']}，"
+                f"idle_slots={estimate['idle_slots']}，leased_slots={estimate['leased_slots']}，"
+                f"cooling={estimate['cooling']}，limited={estimate['limited']}，"
+                f"invalid={estimate['invalid']}，dead={estimate['dead']}",
             )
             self._last_signature = signature
         self._last_logged_error = ""
@@ -169,6 +184,13 @@ class CloudRegistrationMonitor:
                     "capacity_status": status,
                     "recommended_register_accounts": need,
                     "current_effective_accounts": estimate["current_effective_accounts"],
+                    "dispatchable_slots": estimate["dispatchable_slots"],
+                    "idle_slots": estimate["idle_slots"],
+                    "leased_slots": estimate["leased_slots"],
+                    "cooling": estimate["cooling"],
+                    "limited": estimate["limited"],
+                    "invalid": estimate["invalid"],
+                    "dead": estimate["dead"],
                     "shortage_observations": self._observations,
                     "shortage_confirmations": confirmations,
                     "last_error": "",
