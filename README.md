@@ -56,6 +56,10 @@ FlareSolverr 默认容器地址为 `http://flaresolverr:8191`。正常协议响�
 
 启用云端后，开始注册会先读取 `GET /api/image-pool/capacity?limit=60`。容量状态为 `idle`、`enough` 或 `saturated` 时跳过本轮；状态为 `shortage` 时按 `recommended_register_accounts` 与手动数量的较小值执行。成功账号通过 `POST /api/accounts` 逐个上传。
 
+注册机与 IMAGE POOL 的适配边界是：注册机只负责邮箱注册和获取账号凭证，IMAGE POOL 负责账号验证、额度、冷却、参考图能力和并发调度。上传请求使用云端管理员密钥，并发送 `accounts` 数组中的完整账号对象（至少包含 `email`、`access_token`，推荐同时包含 `refresh_token`、`id_token`、`password`、`cookies`、`user_agent`、`source_type`、`registration_channel` 和 `created_at`）。本地的健康计数、存活计时和同步标记不会上传。
+
+云端返回的 `added`、`skipped`、`refreshed` 和 `errors` 会写回本地账号。无验证错误时标记为 `cloud_sync_status=synced`、`cloud_validation_status=verified`；有验证错误或网络失败时标记为 `failed`，后续可按该状态重试。参考图账号是否冷却不由注册机判断，IMAGE POOL 会在参考图请求返回 429 时只暂停该账号的参考图能力，文生图继续由号池调度。
+
 自动监听开启后会按配置间隔持续读取容量。缺口连续达到确认次数后，按云端建议数量和单批上限自动启动注册；注册任务运行期间监听器只等待，不会叠加新批次。
 
 账号页支持检测全部或单个账号。检测接口为 `https://chatgpt.com/backend-api/me`：正常响应标记存活；明确封禁标记为封禁并停止恢复；`401` 进入独立的并发恢复队列，使用保存的邮箱和密码重新登录，必要时读取 YYDS 登录验证码，并将新 Token 原子写回 `data/accounts.json`。检测请求遇到 Cloudflare 挑战页时才调用 FlareSolverr，导入验证 Cookie 后携带原 Token 重新检测；同一批任务会复用验证结果。账号会保存本轮存活起止、上轮/累计存活秒数与恢复次数，恢复成功后从恢复时间开始新一轮存活计时。

@@ -83,6 +83,46 @@ def test_manager_uploads_successful_account_to_cloud(tmp_path, monkeypatch):
     account = manager.accounts(include_secrets=True)[0]
     assert account["cloud_sync_status"] == "synced"
     assert account["cloud_import_result"]["added"] == 1
+    assert account["cloud_validation_status"] == "verified"
+    assert account["cloud_sync_attempts"] == 1
+
+
+def test_manager_marks_cloud_validation_errors_without_persisting_token(tmp_path, monkeypatch):
+    FakeRegistrar.sequence = 0
+    store = JsonStore(tmp_path)
+    settings = store.settings()
+    settings["cloud"].update({"enabled": True, "server": "https://cloud.example.test", "auth_key": "secret"})
+    store.write("settings.json", settings)
+
+    class FakeCloudClient:
+        def __init__(self, _settings, _proxy):
+            pass
+
+        def upload_account(self, account):
+            return {
+                "added": 1,
+                "skipped": 0,
+                "refreshed": 0,
+                "errors": [{"access_token": account["access_token"], "error": "invalid credential"}],
+            }
+
+    monkeypatch.setattr("app.manager.CloudClient", FakeCloudClient)
+    manager = RegistrationManager(store, registrar_factory=FakeRegistrar)
+    manager.start(count=1, concurrency=1)
+    wait_for_completion(manager)
+
+    account = manager.accounts(include_secrets=True)[0]
+    assert account["cloud_sync_status"] == "failed"
+    assert account["cloud_validation_status"] == "failed"
+    assert account["cloud_import_result"] == {
+        "added": 1,
+        "skipped": 0,
+        "refreshed": 0,
+        "errors": 1,
+        "validation": "failed",
+        "error": "云端账号验证失败",
+    }
+    assert "access-1" not in str(account["cloud_import_result"])
 
 
 def test_manager_hides_legacy_non_openai_accounts_without_deleting_them(tmp_path):

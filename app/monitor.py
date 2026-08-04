@@ -185,8 +185,11 @@ class CloudRegistrationMonitor:
         batch_limit = max(1, min(100, int(cloud.get("monitor_batch_limit") or 20)))
         count = min(need, batch_limit)
         concurrency = max(1, min(50, int(cloud.get("monitor_concurrency") or 5), count))
+        channel = str(registration.get("channel") or "protocol").strip().lower()
+        if channel not in {"protocol", "browser"}:
+            channel = "protocol"
         self.manager.log("warning", f"云端缺口连续确认，自动启动注册：数量 {count}，并发 {concurrency}")
-        result = self.manager.start(count=count, concurrency=concurrency, provider="openai")
+        result = self.manager.start(count=count, concurrency=concurrency, provider="openai", channel=channel)
         self._observations = 0
         with self._lock:
             self._state["state"] = "registering"

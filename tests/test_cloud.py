@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from app import cloud as cloud_module
-from app.cloud import CloudClient, capacity_estimate
+from app.cloud import CloudClient, account_import_payload, capacity_estimate
 from app.main import create_app
 from app.manager import RegistrationManager
 from app.storage import JsonStore
@@ -58,7 +58,7 @@ def test_cloud_capacity_and_account_upload_protocol(monkeypatch):
     )
 
     capacity = client.capacity()
-    upload = client.upload_account({"email": "one@example.test"})
+    upload = client.upload_account({"email": "one@example.test", "access_token": "access-token"})
 
     assert capacity_estimate(capacity)["recommended_register_accounts"] == 3
     assert upload["added"] == 1
@@ -68,6 +68,50 @@ def test_cloud_capacity_and_account_upload_protocol(monkeypatch):
     assert session.calls[0][2]["headers"]["Authorization"] == "Bearer secret"
     assert session.calls[1][0:2] == ("POST", "https://cloud.example.test/api/accounts")
     assert session.calls[1][2]["json"]["accounts"][0]["email"] == "one@example.test"
+    assert session.calls[1][2]["json"]["accounts"][0]["access_token"] == "access-token"
+
+
+def test_account_import_payload_drops_local_runtime_fields():
+    payload = account_import_payload(
+        {
+            "id": "account-1",
+            "email": "one@example.test",
+            "access_token": "access-token",
+            "refresh_token": "refresh-token",
+            "health_status": "alive",
+            "cloud_sync_status": "synced",
+            "survival_total_seconds": 123,
+        }
+    )
+
+    assert payload == {
+        "id": "account-1",
+        "email": "one@example.test",
+        "access_token": "access-token",
+        "refresh_token": "refresh-token",
+    }
+
+
+def test_cloud_retries_transient_response_and_supports_flat_capacity(monkeypatch):
+    session = FakeSession([
+        FakeResponse({"error": {"message": "busy"}}, status_code=503),
+        FakeResponse({"status": "shortage", "recommended_register_accounts": 4}),
+    ])
+    monkeypatch.setattr(cloud_module.requests, "Session", lambda **_kwargs: session)
+    monkeypatch.setattr(cloud_module.time, "sleep", lambda _seconds: None)
+    client = CloudClient(
+        {
+            "server": "https://cloud.example.test",
+            "auth_key": "secret",
+            "request_retries": 1,
+        }
+    )
+
+    capacity = client.capacity()
+
+    assert capacity_estimate(capacity)["status"] == "shortage"
+    assert capacity_estimate(capacity)["recommended_register_accounts"] == 4
+    assert len(session.calls) == 2
 
 
 class ApiFakeRegistrar:

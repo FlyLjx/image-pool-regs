@@ -35,6 +35,23 @@ def _seconds_between(started_at: Any, ended_at: Any) -> int:
         return 0
 
 
+def _cloud_import_summary(result: Any) -> tuple[dict[str, int | str], str, str]:
+    payload = result if isinstance(result, dict) else {}
+    raw_errors = payload.get("errors")
+    errors = raw_errors if isinstance(raw_errors, list) else []
+    summary: dict[str, int | str] = {
+        "added": max(0, int(payload.get("added") or 0)),
+        "skipped": max(0, int(payload.get("skipped") or 0)),
+        "refreshed": max(0, int(payload.get("refreshed") or 0)),
+        "errors": len(errors),
+        "validation": "failed" if errors else "verified",
+    }
+    if errors:
+        summary["error"] = "云端账号验证失败"
+        return summary, "failed", "failed"
+    return summary, "synced", "verified"
+
+
 class RegistrationManager:
     """Coordinates the ChatGPT registration workflow."""
 
@@ -513,11 +530,33 @@ class RegistrationManager:
         try:
             cloud_account = copy.deepcopy(account)
             result = CloudClient(settings, str(runtime.get("registration", {}).get("proxy") or "")).upload_account(cloud_account)
-            values = {"cloud_sync_status": "synced", "cloud_synced_at": _now(), "cloud_sync_error": "", "cloud_import_result": {key: result.get(key) for key in ("added", "skipped", "refreshed")}}
+            import_result, sync_status, validation_status = _cloud_import_summary(result)
+            values = {
+                "cloud_sync_status": sync_status,
+                "cloud_validation_status": validation_status,
+                "cloud_synced_at": _now(),
+                "cloud_sync_error": "" if sync_status == "synced" else "云端账号验证失败",
+                "cloud_sync_attempts": int(account.get("cloud_sync_attempts") or 0) + 1,
+                "cloud_import_result": import_result,
+            }
             self._update_account(account, values)
-            self.log("success", f"云端上传完成：added={int(result.get('added') or 0)}，skipped={int(result.get('skipped') or 0)}，refreshed={int(result.get('refreshed') or 0)}", task_number)
+            if sync_status == "synced":
+                self.log(
+                    "success",
+                    f"云端上传并验证完成：added={int(import_result['added'])}，"
+                    f"skipped={int(import_result['skipped'])}，refreshed={int(import_result['refreshed'])}",
+                    task_number,
+                )
+            else:
+                self.log("error", "云端已接收账号，但验证失败，已标记为同步失败", task_number)
         except Exception as exc:
-            values = {"cloud_sync_status": "failed", "cloud_synced_at": _now(), "cloud_sync_error": str(exc)[:500]}
+            values = {
+                "cloud_sync_status": "failed",
+                "cloud_validation_status": "unknown",
+                "cloud_synced_at": _now(),
+                "cloud_sync_error": str(exc)[:500],
+                "cloud_sync_attempts": int(account.get("cloud_sync_attempts") or 0) + 1,
+            }
             self._update_account(account, values)
             self.log("error", f"云端上传失败：{values['cloud_sync_error']}", task_number)
 

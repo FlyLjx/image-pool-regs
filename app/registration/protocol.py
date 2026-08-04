@@ -338,6 +338,18 @@ class ProtocolRegistrar:
     def _log(self, message: str, level: str = "info") -> None:
         self.logger(level, message)
 
+    def _cookie_header(self) -> str:
+        values: list[str] = []
+        try:
+            for cookie in self.session.cookies.jar:
+                name = str(getattr(cookie, "name", "") or "").strip()
+                value = str(getattr(cookie, "value", "") or "").strip()
+                if name and value:
+                    values.append(f"{name}={value}")
+        except Exception:
+            return ""
+        return "; ".join(dict.fromkeys(values))
+
     def _mail_client(self, provider: str = "") -> Any:
         source = str(provider or self.mail_settings.get("provider") or "yyds").strip().lower()
         if source == "outlook":
@@ -1181,6 +1193,9 @@ class ProtocolRegistrar:
                 "token_type": str(tokens.get("token_type") or "Bearer"),
                 "expires_in": int(tokens.get("expires_in") or 0),
                 "source_type": "protocol",
+                "registration_channel": "protocol",
+                "cookies": self._cookie_header(),
+                "user_agent": self.user_agent,
                 "mail_provider": source,
                 "registration_mode": registration_mode,
                 "created_at": now,

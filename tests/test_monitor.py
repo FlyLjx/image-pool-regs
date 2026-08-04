@@ -16,9 +16,9 @@ class FakeManager:
         assert provider in {None, "openai"}
         return {"state": self.state, "job_id": "job-1" if self.state == "running" else ""}
 
-    def start(self, *, count, concurrency, provider="openai"):
+    def start(self, *, count, concurrency, provider="openai", channel="protocol"):
         assert provider == "openai"
-        self.starts.append((count, concurrency))
+        self.starts.append((count, concurrency, channel))
         self.state = "running"
         return {"job_id": "job-1", "state": "running"}
 
@@ -45,6 +45,7 @@ def test_monitor_confirms_shortage_then_starts_single_batch(tmp_path):
     store = JsonStore(tmp_path)
     settings = store.settings()
     settings["registration"]["concurrency"] = 2
+    settings["registration"]["channel"] = "browser"
     settings["cloud"].update({
         "enabled": True,
         "server": "https://cloud.example.test",
@@ -70,7 +71,7 @@ def test_monitor_confirms_shortage_then_starts_single_batch(tmp_path):
         time.sleep(0.01)
     monitor.shutdown()
 
-    assert manager.starts == [(3, 2)]
+    assert manager.starts == [(3, 2, "browser")]
     assert monitor.status()["last_job_id"] == "job-1"
     assert any("1/2" in message for _level, message in manager.logs)
 
@@ -114,7 +115,7 @@ def test_monitor_uses_five_registration_workers_by_default(tmp_path):
         time.sleep(0.01)
     monitor.shutdown()
 
-    assert manager.starts == [(8, 5)]
+    assert manager.starts == [(8, 5, "protocol")]
 
 
 def test_monitor_toggle_is_persisted(tmp_path):
