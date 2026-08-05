@@ -59,7 +59,7 @@ def test_outlook_pool_exhausts_one_base_mailbox_before_using_the_next(tmp_path):
     assert assigned[6] == "second@outlook.com"
 
 
-def test_outlook_pool_waits_for_current_base_mailbox_before_next_split(tmp_path):
+def test_outlook_pool_skips_leased_base_and_registers_next_base(tmp_path):
     pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
     pool.import_text(
         "first@outlook.com----Password123!----client-1----refresh-1\n"
@@ -69,12 +69,13 @@ def test_outlook_pool_waits_for_current_base_mailbox_before_next_split(tmp_path)
     first = pool.acquire(3)
 
     assert first["registered_email"] == "first@outlook.com"
-    with pytest.raises(RuntimeError, match="母号正在注册"):
-        pool.acquire(3)
-    pool.release(first, used=True)
     second = pool.acquire(3)
-    assert second["registered_email"].startswith("first+")
+    assert second["registered_email"] == "second@outlook.com"
     pool.release(second)
+    pool.release(first, used=True)
+    split = pool.acquire(3)
+    assert split["registered_email"].startswith("first+")
+    pool.release(split)
 
 
 def test_outlook_pool_old_alias_slots_do_not_skip_mother_mailbox(tmp_path):

@@ -386,13 +386,15 @@ class OutlookMailboxPool:
 
     @classmethod
     def _next_lease_target(cls, entries: list[dict[str, Any]], limit: int) -> tuple[dict[str, Any] | None, int, bool]:
-        """Return the next mailbox/slot in strict import order.
+        """Return the next mailbox/slot in import order without blocking other bases.
 
         Slot 1 is the base mailbox itself. Later slots are plus-address aliases.
-        If the first usable mailbox is already leased, callers should wait
-        instead of moving to the next mailbox, so one base mailbox is exhausted
-        before the next one starts.
+        A base mailbox must be registered before its own aliases are issued, but
+        a leased base is skipped so another imported base mailbox can register
+        concurrently. Waiting is reserved for the case where every remaining
+        slot is temporarily leased.
         """
+        waiting_for_lease = False
         for item in entries:
             if item.get("status") != "available":
                 continue
@@ -405,20 +407,23 @@ class OutlookMailboxPool:
             # real mother address.
             if not cls._base_registered(item):
                 if base_leased:
-                    return None, 0, True
+                    waiting_for_lease = True
+                    continue
                 if not alias_lease_slots:
                     return item, 0, False
-                return None, 0, True
+                waiting_for_lease = True
+                continue
             if len(used_slots) >= limit:
                 continue
             if alias_lease_slots:
-                return None, 0, True
+                waiting_for_lease = True
+                continue
             if 1 not in used_slots:
                 return item, 1, False
             next_slot = next((slot for slot in range(2, limit + 1) if slot not in used_slots), 0)
             if next_slot:
                 return item, next_slot, False
-        return None, 0, False
+        return None, 0, waiting_for_lease
 
     def acquire(
         self,
@@ -477,9 +482,9 @@ class OutlookMailboxPool:
             now = time.monotonic()
             if on_status and (last_status_at <= 0 or now - last_status_at >= 15.0):
                 last_status_at = now
-                on_status("Outlook 母号顺序队列等待中：当前母号还在注册，完成后继续领取下一个地址")
+                on_status("Outlook 号池暂时没有空闲租约，等待任一注册任务释放地址")
             if time.monotonic() >= deadline:
-                raise RuntimeError("Outlook 母号正在注册，顺序队列等待超时")
+                raise RuntimeError("Outlook 号池等待租约释放超时")
             if stopped and stopped():
                 raise RuntimeError("任务已停止")
             time.sleep(1.0)
