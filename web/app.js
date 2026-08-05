@@ -350,7 +350,7 @@ function renderDashboard(payload) {
   const capacityDetail = monitorEnabled && (
     monitor.dispatchable_slots !== undefined || monitor.idle_slots !== undefined
   )
-    ? ` · 槽位 ${Number(monitor.dispatchable_slots) || 0} · 空闲 ${Number(monitor.idle_slots) || 0} · 租用 ${Number(monitor.leased_slots) || 0} · 冷却 ${Number(monitor.cooling) || 0} · 受限 ${Number(monitor.limited) || 0} · 无效 ${Number(monitor.invalid) || 0} · 死号 ${Number(monitor.dead) || 0}`
+    ? ` · 可调度槽位 ${Number(monitor.dispatchable_slots) || 0} · 空闲槽位 ${Number(monitor.idle_slots) || 0} · 租用槽位 ${Number(monitor.leased_slots) || 0} · 冷却中 ${Number(monitor.cooling) || 0} · 受限账号 ${Number(monitor.limited) || 0} · 无效账号 ${Number(monitor.invalid) || 0} · 死号 ${Number(monitor.dead) || 0}`
     : ''
   $('#monitorMeta').textContent = `${monitor.message || (monitorEnabled ? '等待容量检查' : '自动监听未开启')}${capacityDetail}`
   const monitorButton = $('#monitorButton')

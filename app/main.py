@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth import SessionSigner, UserStore
-from app.cloud import CloudClient, capacity_estimate
+from app.cloud import CloudClient, capacity_estimate, capacity_status_label
 from app.health import AccountHealthService
 from app.manager import RegistrationManager
 from app.monitor import CloudRegistrationMonitor
@@ -630,13 +630,13 @@ def create_app(
                     runtime_manager.log(
                         "info",
                         "云端容量评估："
-                        f"status={status}，建议注册={need}，"
-                        f"当前可调度={estimate['current_effective_accounts']}，"
-                        f"缺可用={estimate['recommended_add_usable_accounts']}，"
-                        f"dispatchable_slots={estimate['dispatchable_slots']}，"
-                        f"idle_slots={estimate['idle_slots']}，leased_slots={estimate['leased_slots']}，"
-                        f"cooling={estimate['cooling']}，limited={estimate['limited']}，"
-                        f"invalid={estimate['invalid']}，dead={estimate['dead']}",
+                        f"状态：{capacity_status_label(status)}，建议注册：{need}，"
+                        f"当前可调度账号：{estimate['current_effective_accounts']}，"
+                        f"缺可用账号：{estimate['recommended_add_usable_accounts']}，"
+                        f"可调度槽位：{estimate['dispatchable_slots']}，"
+                        f"空闲槽位：{estimate['idle_slots']}，租用槽位：{estimate['leased_slots']}，"
+                        f"冷却中：{estimate['cooling']}，受限账号：{estimate['limited']}，"
+                        f"无效账号：{estimate['invalid']}，死号：{estimate['dead']}",
                     )
                     if status in {"idle", "enough", "saturated"} or need <= 0:
                         message = estimate["message"] or "云端容量充足，本轮跳过注册"

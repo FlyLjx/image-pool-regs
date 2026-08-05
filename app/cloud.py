@@ -8,6 +8,13 @@ from curl_cffi import requests
 
 
 TRANSIENT_HTTP_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+CAPACITY_STATUS_LABELS = {
+    "idle": "空闲",
+    "enough": "容量充足",
+    "saturated": "已饱和",
+    "shortage": "存在缺口",
+    "unknown": "未知",
+}
 SECRET_KEYS = frozenset(
     {
         "access_token",
@@ -75,6 +82,10 @@ def _safe_detail(value: Any, limit: int = 600) -> str:
     except Exception:
         text = "云端接口返回了不可序列化的错误详情"
     return text[:limit]
+
+
+def capacity_status_label(status: Any) -> str:
+    return CAPACITY_STATUS_LABELS.get(str(status or "").strip().lower(), "未知")
 
 
 def account_import_payload(account: dict[str, Any]) -> dict[str, Any]:

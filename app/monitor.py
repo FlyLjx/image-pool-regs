@@ -5,7 +5,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from app.cloud import CloudClient, capacity_estimate
+from app.cloud import CloudClient, capacity_estimate, capacity_status_label
 from app.manager import RegistrationManager
 from app.storage import DEFAULT_SETTINGS, JsonStore, deep_merge
 
@@ -162,13 +162,13 @@ class CloudRegistrationMonitor:
             self.manager.log(
                 "info",
                 "自动监听容量："
-                f"status={status}，建议注册={need}，"
-                f"当前可调度={estimate['current_effective_accounts']}，"
-                f"缺可用={estimate['recommended_add_usable_accounts']}，"
-                f"dispatchable_slots={estimate['dispatchable_slots']}，"
-                f"idle_slots={estimate['idle_slots']}，leased_slots={estimate['leased_slots']}，"
-                f"cooling={estimate['cooling']}，limited={estimate['limited']}，"
-                f"invalid={estimate['invalid']}，dead={estimate['dead']}",
+                f"状态：{capacity_status_label(status)}，建议注册：{need}，"
+                f"当前可调度账号：{estimate['current_effective_accounts']}，"
+                f"缺可用账号：{estimate['recommended_add_usable_accounts']}，"
+                f"可调度槽位：{estimate['dispatchable_slots']}，"
+                f"空闲槽位：{estimate['idle_slots']}，租用槽位：{estimate['leased_slots']}，"
+                f"冷却中：{estimate['cooling']}，受限账号：{estimate['limited']}，"
+                f"无效账号：{estimate['invalid']}，死号：{estimate['dead']}",
             )
             self._last_signature = signature
         self._last_logged_error = ""

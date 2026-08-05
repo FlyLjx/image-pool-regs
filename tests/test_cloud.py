@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from app import cloud as cloud_module
-from app.cloud import CloudClient, account_import_payload, capacity_estimate
+from app.cloud import CloudClient, account_import_payload, capacity_estimate, capacity_status_label
 from app.main import create_app
 from app.manager import RegistrationManager
 from app.storage import JsonStore
@@ -150,6 +150,7 @@ def test_capacity_estimate_supports_nested_account_dispatch_slots():
     assert estimate["invalid"] == 1
     assert estimate["dead"] == 3
     assert estimate["registration_pending_tasks"] == 29
+    assert capacity_status_label(estimate["status"]) == "存在缺口"
 
 
 class ApiFakeRegistrar:
