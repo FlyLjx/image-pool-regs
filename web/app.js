@@ -267,7 +267,15 @@ function jobPresentation(job) {
 
 function jobMetaText(provider, job) {
   const base = `${registrationProviderName(provider)} · ${providerModeLabel(provider, job)}`
-  if (job?.state === 'running') return `${base} · ${Number(job.running) || 0} 个执行中`
+  if (job?.state === 'running') {
+    const target = Number(job.target_total ?? job.total) || 0
+    const started = Number(job.started) || 0
+    const pending = Number(job.pending) || Math.max(0, target - started)
+    if (job.source === 'monitor') {
+      return `${base} · 目标 ${target} · 已开始 ${started} · 执行中 ${Number(job.running) || 0} · 待领取 ${pending}`
+    }
+    return `${base} · ${Number(job.running) || 0} 个执行中`
+  }
   if (job?.state === 'stopping') return `${base} · 正在停止`
   const message = String(job?.message || '').trim()
   if (message) return `${base} · ${message.slice(0, 42)}`
@@ -352,7 +360,12 @@ function renderDashboard(payload) {
   )
     ? ` · 可调度槽位 ${Number(monitor.dispatchable_slots) || 0} · 空闲槽位 ${Number(monitor.idle_slots) || 0} · 租用槽位 ${Number(monitor.leased_slots) || 0} · 冷却中 ${Number(monitor.cooling) || 0} · 受限账号 ${Number(monitor.limited) || 0} · 无效账号 ${Number(monitor.invalid) || 0} · 死号 ${Number(monitor.dead) || 0}`
     : ''
-  $('#monitorMeta').textContent = `${monitor.message || (monitorEnabled ? '等待容量检查' : '自动监听未开启')}${capacityDetail}`
+  const activeJobDetail = monitorEnabled && (
+    monitor.active_job_target !== undefined || monitor.active_job_started !== undefined
+  )
+    ? ` · 注册目标 ${Number(monitor.active_job_target) || 0} · 已开始 ${Number(monitor.active_job_started) || 0} · 执行中 ${Number(monitor.active_job_running) || 0} · 待领取 ${Number(monitor.active_job_pending) || 0}`
+    : ''
+  $('#monitorMeta').textContent = `${monitor.message || (monitorEnabled ? '等待容量检查' : '自动监听未开启')}${activeJobDetail}${capacityDetail}`
   const monitorButton = $('#monitorButton')
   monitorButton.innerHTML = monitorEnabled
     ? '<i class="ti ti-radar-off"></i><span>停止监听</span>'

@@ -50,6 +50,10 @@ class CloudRegistrationMonitor:
             "shortage_observations": 0,
             "shortage_confirmations": 0,
             "last_job_id": "",
+            "active_job_target": 0,
+            "active_job_started": 0,
+            "active_job_running": 0,
+            "active_job_pending": 0,
             "last_error": "",
             "message": "自动监听未开启",
         }
@@ -133,11 +137,16 @@ class CloudRegistrationMonitor:
 
     def _check(self, settings: dict[str, Any], cloud: dict[str, Any]) -> None:
         job = self.manager.status(provider="openai")
-        if job.get("state") in {"running", "stopping"}:
+        active_monitor_job = job.get("state") == "running" and str(job.get("source") or "manual") == "monitor"
+        if job.get("state") in {"running", "stopping"} and not active_monitor_job:
             with self._lock:
                 self._state["state"] = "job_running"
                 self._state["message"] = "注册任务运行中"
                 self._state["last_job_id"] = str(job.get("job_id") or "")
+                self._state["active_job_target"] = int(job.get("target_total") or job.get("total") or 0)
+                self._state["active_job_started"] = int(job.get("started") or 0)
+                self._state["active_job_running"] = int(job.get("running") or 0)
+                self._state["active_job_pending"] = int(job.get("pending") or 0)
             return
         if not bool(cloud.get("enabled")):
             raise RuntimeError("自动监听已开启，但云端配置未启用")
@@ -198,6 +207,46 @@ class CloudRegistrationMonitor:
                     "message": estimate["message"] or "等待下一次容量检查",
                 }
             )
+
+        # A monitor-owned job keeps the same absolute target while it runs.
+        # Refreshing capacity on every poll lets us lower that target without
+        # cancelling workers already inside an email/code/token workflow, or
+        # raise it when the cloud reports a larger shortage.
+        if active_monitor_job:
+            batch_limit = max(1, min(100, int(cloud.get("monitor_batch_limit") or 20)))
+            desired = min(need, batch_limit) if status == "shortage" and need > 0 else 0
+            adjust = getattr(self.manager, "adjust_target", None)
+            adjustment: dict[str, Any] = {}
+            if callable(adjust):
+                adjustment = adjust(desired, job_id=str(job.get("job_id") or "")) or {}
+            previous = int(adjustment.get("previous_target") or job.get("target_total") or job.get("total") or 0)
+            target = int(adjustment.get("target_total") if adjustment.get("target_total") is not None else desired)
+            with self._lock:
+                self._state["last_job_id"] = str(job.get("job_id") or "")
+                self._state["active_job_target"] = target
+                self._state["active_job_started"] = int(adjustment.get("started") or job.get("started") or 0)
+                self._state["active_job_running"] = int(job.get("running") or 0)
+                self._state["active_job_pending"] = int(adjustment.get("pending") if adjustment.get("pending") is not None else job.get("pending") or 0)
+                self._state["state"] = "registering"
+                if target != previous:
+                    if target < previous:
+                        self._state["message"] = (
+                            f"需求下降，注册目标已从 {previous} 调整为 {target}；"
+                            "已开始的账号继续完成，未开始的任务停止领取"
+                        )
+                    else:
+                        self._state["message"] = f"需求增加，注册目标已从 {previous} 调整为 {target}"
+            if target != previous:
+                if target < previous:
+                    self.manager.log(
+                        "warning",
+                        f"自动监听重新调整注册目标：原目标 {previous}，现目标 {target}；"
+                        "已开始任务继续完成，未开始任务停止领取",
+                    )
+                else:
+                    self.manager.log("info", f"自动监听增加注册目标：原目标 {previous}，现目标 {target}")
+            self._observations = 0
+            return
         if status != "shortage" or need <= 0:
             return
         if self._observations < confirmations:
@@ -211,10 +260,28 @@ class CloudRegistrationMonitor:
         if channel not in {"protocol", "browser"}:
             channel = "protocol"
         self.manager.log("warning", f"云端缺口连续确认，自动启动注册：数量 {count}，并发 {concurrency}")
-        result = self.manager.start(count=count, concurrency=concurrency, provider="openai", channel=channel)
+        # ``source`` is understood by the real manager. The fallback keeps
+        # older test doubles and integrations source-compatible while they are
+        # upgraded.
+        try:
+            result = self.manager.start(
+                count=count,
+                concurrency=concurrency,
+                provider="openai",
+                channel=channel,
+                source="monitor",
+            )
+        except TypeError as exc:
+            if "source" not in str(exc):
+                raise
+            result = self.manager.start(count=count, concurrency=concurrency, provider="openai", channel=channel)
         self._observations = 0
         with self._lock:
             self._state["state"] = "registering"
             self._state["message"] = f"已自动启动 {count} 个注册任务"
             self._state["shortage_observations"] = 0
             self._state["last_job_id"] = str(result.get("job_id") or "")
+            self._state["active_job_target"] = count
+            self._state["active_job_started"] = int(result.get("started") or 0)
+            self._state["active_job_running"] = int(result.get("running") or 0)
+            self._state["active_job_pending"] = int(result.get("pending") or count)

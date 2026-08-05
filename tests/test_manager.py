@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 from datetime import datetime, timezone
 
 import pytest
@@ -173,3 +174,40 @@ def test_manager_dispatches_browser_channel_without_changing_provider(tmp_path):
     assert account["provider"] == "openai"
     assert account["registration_channel"] == "browser"
     assert account["source_type"] == "browser"
+
+
+def test_monitor_target_reduction_keeps_started_work_and_drops_pending_tasks(tmp_path):
+    class BlockingRegistrar(FakeRegistrar):
+        entered = 0
+        entered_event = threading.Event()
+        release_event = threading.Event()
+
+        def register(self):
+            type(self).entered += 1
+            if type(self).entered >= 2:
+                type(self).entered_event.set()
+            assert type(self).release_event.wait(3)
+            return super().register()
+
+    BlockingRegistrar.sequence = 0
+    BlockingRegistrar.entered = 0
+    BlockingRegistrar.entered_event.clear()
+    BlockingRegistrar.release_event.clear()
+    manager = RegistrationManager(JsonStore(tmp_path), registrar_factory=BlockingRegistrar)
+    manager.start(count=4, concurrency=2, source="monitor")
+    assert BlockingRegistrar.entered_event.wait(3)
+
+    running = manager.status()
+    assert running["started"] == 2
+    job_id = running["job_id"]
+    adjustment = manager.adjust_target(2, job_id=job_id)
+    assert adjustment["changed"] is True
+    assert adjustment["target_total"] == 2
+    assert adjustment["pending"] == 0
+
+    BlockingRegistrar.release_event.set()
+    wait_for_completion(manager)
+    status = manager.status()
+    assert status["success"] == 2
+    assert status["failed"] == 0
+    assert status["started"] == 2

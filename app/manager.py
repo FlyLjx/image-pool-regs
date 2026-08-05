@@ -72,6 +72,10 @@ class RegistrationManager:
         self._log_context = threading.local()
         self._log_sequence = 0
         self._logs: list[dict[str, Any]] = []
+        # Registration jobs started by the cloud monitor have a mutable target.
+        # Workers read this value before claiming each task, so lowering the
+        # target never interrupts an account that is already in progress.
+        self._job_targets: dict[str, int] = {}
         self._state = self._new_state()
         self.store.read("accounts.json", [])
 
@@ -88,8 +92,11 @@ class RegistrationManager:
             "job_id": "",
             "provider": cls._PROVIDER,
             "channel": "protocol",
+            "source": "manual",
             "state": "idle",
             "total": 0,
+            "target_total": 0,
+            "pending": 0,
             "started": 0,
             "running": 0,
             "success": 0,
@@ -412,10 +419,14 @@ class RegistrationManager:
         concurrency: int,
         provider: str = "openai",
         channel: str | None = None,
+        source: str = "manual",
     ) -> dict[str, Any]:
         self._validate_provider(provider)
         count = max(1, min(100, int(count)))
         concurrency = max(1, min(50, int(concurrency), count))
+        resolved_source = str(source or "manual").strip().lower()
+        if resolved_source not in {"manual", "monitor"}:
+            raise ValueError("注册任务来源仅支持 manual 或 monitor")
         with self._lock:
             if self._runner and self._runner.is_alive():
                 raise RuntimeError("已有注册任务正在运行")
@@ -428,8 +439,10 @@ class RegistrationManager:
             settings["registration"] = registration
             self._state = {
                 **self._new_state(), "job_id": job_id, "state": "running", "channel": resolved_channel,
-                "total": count, "started_at": _now(),
+                "source": resolved_source, "total": count, "target_total": count,
+                "pending": count, "started_at": _now(),
             }
+            self._job_targets[job_id] = count
             settings["_data_root"] = str(self.store.root)
             settings["outlook_pool_path"] = str(self.store.path("outlook_mailboxes.json"))
             self._runner = threading.Thread(
@@ -440,6 +453,53 @@ class RegistrationManager:
         channel_label = "浏览器模拟" if resolved_channel == "browser" else "协议"
         self.log("info", f"ChatGPT {channel_label}注册批次启动：目标 {count} 个，并发 {concurrency}")
         return self.status()
+
+    def adjust_target(self, target_count: int, *, job_id: str | None = None) -> dict[str, Any]:
+        """Adjust a running cloud-monitor job without interrupting active work.
+
+        ``target_count`` is the absolute batch target, not an increment. Tasks
+        already claimed by workers are allowed to finish; workers that have not
+        claimed a task yet observe the new target before doing so.
+        """
+        target = max(0, min(100, int(target_count)))
+        with self._lock:
+            current_job_id = str(self._state.get("job_id") or "")
+            target_job_id = str(job_id or current_job_id)
+            if target_job_id != current_job_id:
+                return {
+                    "changed": False,
+                    "job_id": target_job_id,
+                    "reason": "job_not_found",
+                    "target_total": 0,
+                }
+            if self._state.get("state") not in {"running", "stopping"}:
+                return {
+                    "changed": False,
+                    "job_id": target_job_id,
+                    "reason": "job_not_running",
+                    "target_total": int(self._state.get("target_total") or self._state.get("total") or 0),
+                }
+            if str(self._state.get("source") or "manual") != "monitor":
+                return {
+                    "changed": False,
+                    "job_id": target_job_id,
+                    "reason": "manual_job",
+                    "target_total": int(self._state.get("target_total") or self._state.get("total") or 0),
+                }
+            previous = int(self._job_targets.get(target_job_id, self._state.get("target_total") or self._state.get("total") or 0))
+            started = int(self._state.get("started") or 0)
+            self._job_targets[target_job_id] = target
+            self._state["target_total"] = target
+            self._state["total"] = target
+            self._state["pending"] = max(0, target - started)
+            return {
+                "changed": previous != target,
+                "job_id": target_job_id,
+                "previous_target": previous,
+                "target_total": target,
+                "started": started,
+                "pending": max(0, target - started),
+            }
 
     def stop(self, provider: str | None = None) -> dict[str, Any]:
         self._validate_provider(provider)
@@ -461,7 +521,12 @@ class RegistrationManager:
             nonlocal next_task
             while not stop_event.is_set():
                 with queue_lock:
-                    if next_task > count:
+                    # Read the mutable target immediately before claiming a
+                    # task. A target reduction therefore leaves active tasks
+                    # untouched while preventing any new task from starting.
+                    with self._lock:
+                        target = int(self._job_targets.get(job_id, count))
+                    if next_task > target:
                         return
                     task_number = next_task
                     next_task += 1
@@ -470,6 +535,10 @@ class RegistrationManager:
                         return
                     self._state["started"] += 1
                     self._state["running"] += 1
+                    self._state["pending"] = max(
+                        0,
+                        int(self._state.get("target_total") or count) - int(self._state.get("started") or 0),
+                    )
                 self.log("info", "开始注册", task_number)
                 registrar = None
                 try:
@@ -511,6 +580,10 @@ class RegistrationManager:
                     with self._lock:
                         if self._state.get("job_id") == job_id:
                             self._state["running"] = max(0, self._state["running"] - 1)
+                            self._state["pending"] = max(
+                                0,
+                                int(self._state.get("target_total") or count) - int(self._state.get("started") or 0),
+                            )
 
         try:
             with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="register-openai-worker") as executor:
@@ -522,6 +595,8 @@ class RegistrationManager:
                 if self._state.get("job_id") == job_id:
                     self._state["state"] = "stopped" if stop_event.is_set() else "completed"
                     self._state["finished_at"] = _now()
+                    self._state["pending"] = 0
+                    self._job_targets.pop(job_id, None)
             status = self.status()
             self.log("success" if status["failed"] == 0 else "warning", f"注册批次结束：成功 {status['success']}，失败 {status['failed']}")
 
