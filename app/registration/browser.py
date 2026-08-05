@@ -8,7 +8,6 @@ import shutil
 import tempfile
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
 from typing import Any, Callable
@@ -19,6 +18,7 @@ from playwright.sync_api import BrowserContext, Locator, Page, Playwright, sync_
 from app.registration.mail import YydsMailClient
 from app.registration.outlook import OutlookMailClient
 from app.registration.protocol import outlook_error_should_disable, random_password
+from app.time_utils import iso_now, now as china_now
 
 
 LogCallback = Callable[[str, str], None]
@@ -472,7 +472,7 @@ class BrowserRegistrar:
                 400,
             )
             if age:
-                self._fill_human(age, str(datetime.now().year - int(year)))
+                self._fill_human(age, str(china_now().year - int(year)))
             else:
                 selects = page.locator("select:visible")
                 if selects.count() >= 3:
@@ -687,7 +687,7 @@ class BrowserRegistrar:
     def _save_debug(self, page: Page, label: str = "failure") -> None:
         debug_root = self.data_root / "browser_debug"
         debug_root.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        stamp = china_now().strftime("%Y%m%d-%H%M%S-%f")
         base = debug_root / f"{stamp}-{label}"
         try:
             page.screenshot(path=str(base.with_suffix(".png")), full_page=True)
@@ -737,7 +737,7 @@ class BrowserRegistrar:
             access_token = str(session.get("access_token") or "").strip()
             claims = _jwt_claims(access_token)
             expires_in = max(0, int(claims.get("exp") or 0) - int(time.time()))
-            now = datetime.now(timezone.utc).isoformat()
+            now = iso_now()
             result = {
                 "id": _account_id(access_token) or str(claims.get("sub") or uuid.uuid4().hex),
                 "email": email,

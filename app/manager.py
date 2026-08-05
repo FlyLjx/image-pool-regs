@@ -5,16 +5,17 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Callable
 
 from app.cloud import CloudClient
 from app.registration import BrowserRegistrar, ProtocolRegistrar
 from app.storage import JsonStore
+from app.time_utils import iso_now, now as china_now, today as china_today
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return iso_now()
 
 
 def _mask(value: Any, head: int = 10, tail: int = 6) -> str:
@@ -114,7 +115,7 @@ class RegistrationManager:
             return result
         try:
             start = datetime.fromisoformat(str(result["started_at"]))
-            end = datetime.fromisoformat(str(result["finished_at"])) if result.get("finished_at") else datetime.now(timezone.utc)
+            end = datetime.fromisoformat(str(result["finished_at"])) if result.get("finished_at") else china_now()
             result["elapsed_seconds"] = max(0, int((end - start).total_seconds()))
         except (TypeError, ValueError):
             result["elapsed_seconds"] = 0
@@ -249,7 +250,7 @@ class RegistrationManager:
 
     def account_summary(self) -> dict[str, int]:
         accounts = self.accounts()
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = china_today()
         return {
             "total": len(accounts),
             "today": sum(1 for item in accounts if str(item.get("created_at") or "").startswith(today)),
@@ -257,7 +258,7 @@ class RegistrationManager:
 
     def _record_registration_result(self, success: bool) -> None:
         """Persist registration outcomes so periodic reports survive restarts."""
-        day = datetime.now(timezone.utc).date().isoformat()
+        day = china_today()
         key = "success" if success else "failed"
 
         def update(raw: Any) -> dict[str, Any]:
@@ -287,7 +288,7 @@ class RegistrationManager:
             payload = {}
         total_success = max(0, int(payload.get("total_success") or 0))
         total_failed = max(0, int(payload.get("total_failed") or 0))
-        today_key = datetime.now(timezone.utc).date().isoformat()
+        today_key = china_today()
         days = payload.get("days") if isinstance(payload.get("days"), dict) else {}
         today = days.get(today_key) if isinstance(days.get(today_key), dict) else {}
         today_success = max(0, int(today.get("success") or 0))

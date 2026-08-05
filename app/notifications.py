@@ -4,7 +4,6 @@ import copy
 import json
 import threading
 import time
-from datetime import datetime, timezone
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 from typing import Any
@@ -12,10 +11,11 @@ from typing import Any
 from app.cloud import CloudClient, capacity_estimate
 from app.registration.outlook import OutlookMailboxPool
 from app.storage import JsonStore
+from app.time_utils import iso_now, today as china_today
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return iso_now()
 
 
 class BarkStockNotifier:
@@ -95,7 +95,7 @@ class BarkStockNotifier:
     def _mail_import_summary(self) -> dict[str, int]:
         stats = self.store.read("outlook_import_stats.json", {"days": {}})
         days = stats.get("days") if isinstance(stats, dict) and isinstance(stats.get("days"), dict) else {}
-        today_key = datetime.now(timezone.utc).date().isoformat()
+        today_key = china_today()
         today = days.get(today_key) if isinstance(days.get(today_key), dict) else {}
         total_added = 0
         for entry in days.values():

@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from datetime import datetime, timezone
+from datetime import datetime
 from queue import Empty, Queue
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -21,6 +21,7 @@ from app.registration.protocol import (
     flaresolverr_proxy_url,
 )
 from app.storage import DEFAULT_SETTINGS, JsonStore, deep_merge
+from app.time_utils import iso_now
 
 
 HEALTH_URL = "https://chatgpt.com/backend-api/me"
@@ -45,7 +46,7 @@ CHALLENGE_MARKERS = (
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return iso_now()
 
 
 def _elapsed_seconds(started_at: Any, ended_at: Any) -> int:

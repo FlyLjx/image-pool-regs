@@ -85,7 +85,7 @@
 
         <div class="stats-grid">
           <article class="stat-block green"><span><i class="ti ti-users"></i>账号总数</span><strong id="statTotal">0</strong><small>已保存</small></article>
-          <article class="stat-block blue"><span><i class="ti ti-calendar-check"></i>今日新增</span><strong id="statToday">0</strong><small>UTC</small></article>
+          <article class="stat-block blue"><span><i class="ti ti-calendar-check"></i>今日新增</span><strong id="statToday">0</strong><small>中国时间</small></article>
           <article class="stat-block amber"><span><i class="ti ti-loader"></i>当前进度</span><strong id="statProgress">0 / 0</strong><small id="statProgressMeta">等待任务</small></article>
           <article class="stat-block red"><span><i class="ti ti-alert-circle"></i>本批失败</span><strong id="statFailed">0</strong><small>最近批次</small></article>
         </div>
@@ -309,7 +309,7 @@
           </section>
           <aside class="outlook-mail-aside">
             <section class="panel">
-              <header class="panel-head"><div><i class="ti ti-calendar-stats"></i><span><strong>每日 API 导入</strong><small>按 UTC 日期统计</small></span></div></header>
+              <header class="panel-head"><div><i class="ti ti-calendar-stats"></i><span><strong>每日 API 导入</strong><small>按中国时间日期统计</small></span></div></header>
               <div id="outlookMailImportStats" class="outlook-mail-import-stats"><div class="log-empty"><i class="ti ti-chart-bar"></i><span>暂无导入记录</span></div></div>
             </section>
             <section class="panel outlook-mail-note"><header class="panel-head"><div><i class="ti ti-info-circle"></i><span><strong>管理说明</strong><small>邮箱列表与号池共用数据</small></span></div></header><p>此页面只展示邮箱状态和导入记录，不主动读取收件箱，也不会批量请求 Microsoft Graph。导出 TXT 可直接回灌号池。</p></section>

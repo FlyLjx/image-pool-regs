@@ -5,7 +5,6 @@ import json
 import os
 import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,7 @@ from app.monitor import CloudRegistrationMonitor
 from app.notifications import BarkStockNotifier
 from app.registration.outlook import OutlookMailboxPool
 from app.storage import DEFAULT_SETTINGS, JsonStore, deep_merge
+from app.time_utils import iso_now, today as china_today
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -218,7 +218,7 @@ class HealthCheckRequest(BaseModel):
 
 
 def _record_outlook_import_stats(store: JsonStore, result: dict[str, Any], actor: str) -> dict[str, Any]:
-    day = datetime.now(timezone.utc).date().isoformat()
+    day = china_today()
     added = int(result.get("added") or 0)
     updated = int(result.get("updated") or 0)
     source = "api" if actor == "api" else "ui"
@@ -246,7 +246,7 @@ def _record_outlook_import_stats(store: JsonStore, result: dict[str, Any], actor
         entry[f"{source}_added"] = int(entry.get(f"{source}_added") or 0) + added
         entry[f"{source}_updated"] = int(entry.get(f"{source}_updated") or 0) + updated
         entry[f"{source}_requests"] = int(entry.get(f"{source}_requests") or 0) + 1
-        entry["last_at"] = datetime.now(timezone.utc).isoformat()
+        entry["last_at"] = iso_now()
         payload["days"] = days
         return payload
 
@@ -453,7 +453,7 @@ def create_app(
         stats = await run_in_threadpool(runtime_store.read, "outlook_import_stats.json", {"days": {}})
         days = stats.get("days") if isinstance(stats, dict) and isinstance(stats.get("days"), dict) else {}
         ordered_days = [days[key] for key in sorted(days, reverse=True) if isinstance(days[key], dict)][:30]
-        today = ordered_days[0] if ordered_days and str(ordered_days[0].get("date") or "") == datetime.now(timezone.utc).date().isoformat() else {}
+        today = ordered_days[0] if ordered_days and str(ordered_days[0].get("date") or "") == china_today() else {}
         result["import_stats"] = {
             "today": today,
             "recent": ordered_days,
@@ -496,7 +496,7 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         stats = await run_in_threadpool(_record_outlook_import_stats, runtime_store, result, _actor)
         runtime_manager.log("success", f"Outlook 导入 API：新增 {result['added']}，更新 {result['updated']}")
-        return {"ok": True, **result, "import_stats": stats.get("days", {}).get(datetime.now(timezone.utc).date().isoformat(), {})}
+        return {"ok": True, **result, "import_stats": stats.get("days", {}).get(china_today(), {})}
 
     @app.post("/api/settings/outlook-pool/import")
     async def import_outlook_pool(

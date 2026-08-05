@@ -17,6 +17,7 @@ from typing import Any, Callable
 from curl_cffi import requests
 
 from app.registration.mail import _timestamp, extract_otp
+from app.time_utils import iso_now
 
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
@@ -32,7 +33,7 @@ class OutlookOtpPollLimitError(RuntimeError):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return iso_now()
 
 
 class OutlookMailboxPool:

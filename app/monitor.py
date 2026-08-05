@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import copy
 import threading
-from datetime import datetime, timezone
 from typing import Any, Callable
 
 from app.cloud import CloudClient, capacity_estimate, capacity_status_label
 from app.manager import RegistrationManager
 from app.storage import DEFAULT_SETTINGS, JsonStore, deep_merge
+from app.time_utils import iso_now
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return iso_now()
 
 
 class CloudRegistrationMonitor:

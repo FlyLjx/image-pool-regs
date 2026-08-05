@@ -9,7 +9,6 @@ import secrets
 import string
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Lock
 from typing import Any, Callable
@@ -20,6 +19,7 @@ from curl_cffi import requests
 from app.registration.mail import YydsMailClient
 from app.registration.outlook import OutlookMailClient
 from app.registration.sentinel import build_so_token, build_standard_token
+from app.time_utils import iso_now
 
 
 AUTH_BASE = "https://auth.openai.com"
@@ -1182,7 +1182,7 @@ class ProtocolRegistrar:
             refresh_token = str(tokens.get("refresh_token") or "").strip()
             id_token = str(tokens.get("id_token") or "").strip()
             claims = _jwt_claims(id_token or access_token)
-            now = datetime.now(timezone.utc).isoformat()
+            now = iso_now()
             result = {
                 "id": str(claims.get("sub") or uuid.uuid4().hex),
                 "email": email,

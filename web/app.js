@@ -241,8 +241,9 @@ function formatTime(value, timeOnly = false) {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
-  if (timeOnly) return date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  return date.toLocaleString('zh-CN', { hour12: false })
+  const options = { hour12: false, timeZone: 'Asia/Shanghai' }
+  if (timeOnly) return date.toLocaleTimeString('zh-CN', { ...options, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return date.toLocaleString('zh-CN', options)
 }
 
 function formatLifetime(seconds) {
