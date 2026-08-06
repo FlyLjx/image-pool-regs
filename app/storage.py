@@ -34,6 +34,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "domains": ["team.edu.yccc.me", "auto"],
         "email_prefix": "",
         "outlook_split_limit": 5,
+        "email001_auto_purchase": False,
+        "email001_api_base": "https://email001.com",
+        "email001_api_key": "",
+        "email001_sku_id": 14,
+        "email001_quantity": 100,
+        "email001_purchase_timeout": 30,
     },
     "cloud": {
         "enabled": False,

@@ -286,6 +286,7 @@
           <article class="stat-block green"><span><i class="ti ti-mail"></i>Outlook 邮箱</span><strong id="outlookMailStatTotal">0</strong><small>全部基础邮箱</small></article>
           <article class="stat-block amber"><span><i class="ti ti-calendar-plus"></i>今日 API 导入</span><strong id="outlookMailStatToday">0</strong><small id="outlookMailStatTodayMeta">新增邮箱</small></article>
           <article class="stat-block red"><span><i class="ti ti-chart-histogram"></i>近 7 天导入</span><strong id="outlookMailStatWeek">0</strong><small>API 新增邮箱</small></article>
+          <article class="stat-block blue"><span><i class="ti ti-clock"></i>最后一次导入</span><strong id="outlookMailStatLastImport">-</strong><small id="outlookMailStatLastImportMeta">暂无导入记录</small></article>
         </div>
         <div class="outlook-mail-layout">
           <section class="panel outlook-mail-panel">
@@ -353,6 +354,11 @@
               <header class="panel-head"><div><i class="ti ti-brand-windows"></i><span><strong>Outlook 邮箱池</strong><small id="outlookPoolStatus">读取邮箱池状态</small></span></div><button id="outlookPoolImportButton" class="button secondary" type="button"><i class="ti ti-file-import"></i><span>导入邮箱池</span></button></header>
               <div class="form-grid">
                 <label class="field span-2"><span>账号列表</span><textarea id="outlookPoolInput" placeholder="邮箱----密码----Client ID----Refresh Token&#10;每行一个账号"></textarea></label>
+                <label class="toggle-row span-2"><span><strong>号池枯竭自动购买</strong><small>无可用分裂槽位时从 email001 下单并自动导入</small></span><input id="email001AutoPurchase" type="checkbox"><i></i></label>
+                <label class="field span-2"><span>email001 API 地址</span><input id="email001ApiBase" type="url" placeholder="https://email001.com"></label>
+                <label class="field span-2"><span>email001 API Key</span><span class="input-wrap"><i class="ti ti-key"></i><input id="email001ApiKey" type="password" autocomplete="off" placeholder="填入账户 API Key"></span></label>
+                <label class="field"><span>商品 SKU</span><input id="email001SkuId" type="number" min="1" value="14"></label>
+                <label class="field"><span>每次购买数量</span><input id="email001Quantity" type="number" min="1" max="1000" value="100"></label>
               </div>
             </section>
 

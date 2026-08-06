@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 from curl_cffi import requests
 
+from app.registration.email001 import Email001AutoPurchaseClient
 from app.registration.mail import _timestamp, extract_otp
 from app.time_utils import iso_now
 
@@ -433,6 +434,7 @@ class OutlookMailboxPool:
         wait_timeout: float = 0.0,
         stopped: Callable[[], bool] | None = None,
         on_status: Callable[[str], None] | None = None,
+        on_empty: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         limit = max(1, min(50, int(split_limit or 5)))
         deadline = time.monotonic() + max(0.0, float(wait_timeout or 0.0))
@@ -479,6 +481,8 @@ class OutlookMailboxPool:
                     )
                     return assigned
             if not waiting_for_current:
+                if on_empty and on_empty():
+                    continue
                 raise RuntimeError(f"Outlook 邮箱池没有可用分裂邮箱（每个基础邮箱上限 {limit} 个）")
             now = time.monotonic()
             if on_status and (last_status_at <= 0 or now - last_status_at >= 15.0):
@@ -605,6 +609,7 @@ class OutlookMailClient:
         queue_wait_timeout: float = 1800,
         stopped: Callable[[], bool] | None = None,
         on_status: Callable[[str], None] | None = None,
+        auto_purchase_settings: dict[str, Any] | None = None,
     ) -> None:
         self.pool = OutlookMailboxPool(pool_path)
         self.request_timeout = max(10.0, float(request_timeout or 30))
@@ -612,6 +617,11 @@ class OutlookMailClient:
         self.queue_wait_timeout = max(300.0, float(queue_wait_timeout or 1800))
         self.stopped = stopped
         self.on_status = on_status
+        self.auto_purchase = Email001AutoPurchaseClient(
+            auto_purchase_settings,
+            proxy=proxy,
+            request_timeout=self.request_timeout,
+        )
         options: dict[str, Any] = {"impersonate": "chrome", "verify": False}
         if proxy:
             options["proxy"] = proxy
@@ -623,6 +633,15 @@ class OutlookMailClient:
             self.pool.release(self._leased)
             self._leased = None
         self.session.close()
+        self.auto_purchase.close()
+
+    def _purchase_if_empty(self) -> bool:
+        result = self.auto_purchase.purchase_and_import(
+            available_slots=lambda: int(self.pool.summary(self.split_limit).get("available_slots") or 0),
+            import_payload=self.pool.import_payload,
+            on_status=self.on_status,
+        )
+        return int(result.get("available_slots") or 0) > 0
 
     @staticmethod
     def _mailbox(record: dict[str, Any]) -> dict[str, Any]:
@@ -646,6 +665,7 @@ class OutlookMailClient:
             wait_timeout=self.queue_wait_timeout,
             stopped=self.stopped,
             on_status=self.on_status,
+            on_empty=self._purchase_if_empty,
         )
         self._leased["split_limit"] = self.split_limit
         return self._mailbox(self._leased)

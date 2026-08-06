@@ -365,6 +365,7 @@ class ProtocolRegistrar:
                 ),
                 stopped=self.stop_event.is_set,
                 on_status=self._log,
+                auto_purchase_settings=self.mail_settings,
             )
         mail_options = dict(self.mail_settings)
         mail_options["request_timeout"] = self.timeout

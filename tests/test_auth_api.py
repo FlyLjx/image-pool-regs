@@ -194,6 +194,22 @@ def test_outlook_mail_directory_export_and_daily_api_stats(tmp_path, monkeypatch
         assert listing["items"][0]["email"] == item["email"]
         assert listing["summary"]["total"] == 1
         assert listing["import_stats"]["today"]["api_added"] == 1
+        last_import = listing["import_stats"]["last_import"]
+        assert last_import["at"]
+        assert last_import["source"] == "api"
+        assert last_import["added"] == 1
+        assert last_import["updated"] == 0
+
+        manual = client.post(
+            "/api/settings/outlook-pool/import",
+            json={
+                "items": "manual@example.test----Password123!----manual-client-id----manual-refresh-token",
+            },
+        )
+        assert manual.status_code == 200
+        listing_after_manual = client.get("/api/outlook-mails").json()
+        assert listing_after_manual["import_stats"]["last_import"]["source"] == "ui"
+        assert listing_after_manual["import_stats"]["last_import"]["added"] == 1
 
         detail = client.get("/api/outlook-mails/export.txt")
         assert detail.status_code == 200

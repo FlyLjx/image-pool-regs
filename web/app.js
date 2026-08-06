@@ -526,6 +526,11 @@ function fillSettings(settings) {
   $('#mailPrefix').value = mail.email_prefix || ''
   $('#mailProvider').value = mail.provider || 'yyds'
   $('#outlookSplitLimit').value = mail.outlook_split_limit ?? 5
+  $('#email001AutoPurchase').checked = Boolean(mail.email001_auto_purchase)
+  $('#email001ApiBase').value = mail.email001_api_base || 'https://email001.com'
+  $('#email001ApiKey').value = mail.email001_api_key || ''
+  $('#email001SkuId').value = mail.email001_sku_id || 14
+  $('#email001Quantity').value = mail.email001_quantity || 100
   $('#cloudEnabled').checked = Boolean(cloud.enabled)
   $('#cloudServer').value = cloud.server || ''
   $('#cloudAuthKey').value = cloud.auth_key || ''
@@ -598,6 +603,12 @@ function collectSettings() {
       domains: domains.length ? domains : ['auto'],
       email_prefix: $('#mailPrefix').value.trim(),
       outlook_split_limit: Number($('#outlookSplitLimit').value),
+      email001_auto_purchase: $('#email001AutoPurchase').checked,
+      email001_api_base: $('#email001ApiBase').value.trim(),
+      email001_api_key: $('#email001ApiKey').value.trim(),
+      email001_sku_id: Number($('#email001SkuId').value),
+      email001_quantity: Number($('#email001Quantity').value),
+      email001_purchase_timeout: 30,
     },
     cloud: {
       enabled: $('#cloudEnabled').checked,
@@ -888,6 +899,27 @@ function renderOutlookMailImportStats(stats) {
     </div>`).join('')
 }
 
+function renderOutlookMailLastImport(lastImport) {
+  const time = $('#outlookMailStatLastImport')
+  const meta = $('#outlookMailStatLastImportMeta')
+  if (!lastImport?.at) {
+    time.textContent = '-'
+    meta.textContent = '暂无导入记录'
+    return
+  }
+  const date = new Date(lastImport.at)
+  const dateLabel = Number.isNaN(date.getTime())
+    ? String(lastImport.at)
+    : date.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+  const source = lastImport.source === 'ui'
+    ? '页面导入'
+    : lastImport.source === 'legacy'
+      ? '历史汇总'
+      : 'API 导入'
+  time.textContent = formatTime(lastImport.at, true)
+  meta.textContent = `${dateLabel} · ${source} · 新增 ${Number(lastImport.added || 0)} · 更新 ${Number(lastImport.updated || 0)}`
+}
+
 function renderOutlookMails(payload) {
   state.outlookMails = payload || null
   state.outlookMailItems = Array.isArray(payload?.items) ? payload.items : []
@@ -900,6 +932,7 @@ function renderOutlookMails(payload) {
   const importStats = payload?.import_stats || {}
   const today = importStats.today || {}
   const recent = Array.isArray(importStats.recent) ? importStats.recent : []
+  const lastImport = importStats.last_import || null
   const week = recent.slice(0, 7).reduce((sum, item) => sum + Number(item.api_added || 0), 0)
   $('#sideOutlookMailCount').textContent = state.outlookMailTotal
   $('#outlookMailStatTotal').textContent = Number(summary.total ?? state.outlookMailTotal)
@@ -910,6 +943,7 @@ function renderOutlookMails(payload) {
     ? `${state.outlookMailTotal} 条匹配`
     : `${Number(summary.total || state.outlookMailTotal)} 个邮箱`
   renderOutlookMailImportStats(importStats)
+  renderOutlookMailLastImport(lastImport)
   $$('[data-outlook-mail-status]').forEach((button) => {
     const active = button.dataset.outlookMailStatus === state.outlookMailStatus
     button.classList.toggle('active', active)

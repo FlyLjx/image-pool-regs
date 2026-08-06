@@ -84,6 +84,12 @@ class MailSettings(BaseModel):
     domains: list[str] = Field(default_factory=lambda: ["auto"], max_length=100)
     email_prefix: str = Field(default="", max_length=64)
     outlook_split_limit: int = Field(default=5, ge=1, le=50)
+    email001_auto_purchase: bool = False
+    email001_api_base: str = Field(default="https://email001.com", min_length=8, max_length=500)
+    email001_api_key: str = Field(default="", max_length=500)
+    email001_sku_id: int = Field(default=14, ge=1, le=100000)
+    email001_quantity: int = Field(default=100, ge=1, le=1000)
+    email001_purchase_timeout: float = Field(default=30, ge=10, le=300)
 
     @field_validator("provider")
     @classmethod
@@ -99,6 +105,14 @@ class MailSettings(BaseModel):
         clean = value.strip().rstrip("/")
         if not clean.startswith(("http://", "https://")):
             raise ValueError("邮箱 API 地址必须以 http:// 或 https:// 开头")
+        return clean
+
+    @field_validator("email001_api_base")
+    @classmethod
+    def validate_email001_url(cls, value: str) -> str:
+        clean = value.strip().rstrip("/")
+        if not clean.startswith(("http://", "https://")):
+            raise ValueError("email001 API 地址必须以 http:// 或 https:// 开头")
         return clean
 
 
@@ -123,7 +137,6 @@ class CloudSettings(BaseModel):
         if clean and not clean.startswith(("http://", "https://")):
             raise ValueError("云端地址必须以 http:// 或 https:// 开头")
         return clean
-
 
 class NotificationSettings(BaseModel):
     bark_enabled: bool = False
@@ -222,6 +235,7 @@ def _record_outlook_import_stats(store: JsonStore, result: dict[str, Any], actor
     added = int(result.get("added") or 0)
     updated = int(result.get("updated") or 0)
     source = "api" if actor == "api" else "ui"
+    imported_at = iso_now()
 
     def update(raw: Any) -> dict[str, Any]:
         payload = raw if isinstance(raw, dict) else {}
@@ -246,8 +260,15 @@ def _record_outlook_import_stats(store: JsonStore, result: dict[str, Any], actor
         entry[f"{source}_added"] = int(entry.get(f"{source}_added") or 0) + added
         entry[f"{source}_updated"] = int(entry.get(f"{source}_updated") or 0) + updated
         entry[f"{source}_requests"] = int(entry.get(f"{source}_requests") or 0) + 1
-        entry["last_at"] = iso_now()
+        entry["last_at"] = imported_at
         payload["days"] = days
+        payload["last_import"] = {
+            "at": imported_at,
+            "source": source,
+            "added": added,
+            "updated": updated,
+            "requests": 1,
+        }
         return payload
 
     return store.update("outlook_import_stats.json", {"days": {}}, update)
@@ -454,9 +475,25 @@ def create_app(
         days = stats.get("days") if isinstance(stats, dict) and isinstance(stats.get("days"), dict) else {}
         ordered_days = [days[key] for key in sorted(days, reverse=True) if isinstance(days[key], dict)][:30]
         today = ordered_days[0] if ordered_days and str(ordered_days[0].get("date") or "") == china_today() else {}
+        last_import = stats.get("last_import") if isinstance(stats, dict) and isinstance(stats.get("last_import"), dict) else {}
+        if not last_import:
+            latest_day = max(
+                (entry for entry in ordered_days if str(entry.get("last_at") or "")),
+                key=lambda entry: str(entry.get("last_at") or ""),
+                default={},
+            )
+            if latest_day:
+                last_import = {
+                    "at": str(latest_day.get("last_at") or ""),
+                    "source": "legacy",
+                    "added": int(latest_day.get("added") or 0),
+                    "updated": int(latest_day.get("updated") or 0),
+                    "requests": int(latest_day.get("requests") or 0),
+                }
         result["import_stats"] = {
             "today": today,
             "recent": ordered_days,
+            "last_import": last_import,
         }
         return result
 
@@ -511,6 +548,7 @@ def create_app(
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         runtime_manager.log("success", f"Outlook 邮箱池已导入：新增 {result['added']}，更新 {result['updated']}")
+        await run_in_threadpool(_record_outlook_import_stats, runtime_store, result, "ui")
         return result
 
     @app.delete("/api/outlook-pool")
