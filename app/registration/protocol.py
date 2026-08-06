@@ -80,6 +80,10 @@ def outlook_error_requires_disable(error: BaseException | str) -> bool:
             "拒绝创建账号资料",
             "outlook 邮箱轮询已达",
             "仍未收到新验证码",
+            "service abuse mode",
+            "collecting proof",
+            "account is found to be in service abuse",
+            "invalid_grant",
         )
     )
 
@@ -108,9 +112,7 @@ def outlook_error_is_transient(error: BaseException | str) -> bool:
 def outlook_error_should_disable(error: BaseException | str) -> bool:
     if outlook_error_requires_disable(error):
         return True
-    if outlook_error_is_transient(error):
-        return False
-    return True
+    return False
 
 
 _TLS_TRANSPORT_MARKERS = (

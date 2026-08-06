@@ -358,3 +358,9 @@ def test_outlook_wait_for_code_switches_mailbox_after_poll_limit(monkeypatch):
     assert len(calls) == 3
     assert statuses[-1] == "Outlook 邮箱轮询已达 3 次仍未收到新验证码，当前母号标记失效并切换下一个号"
     assert outlook_error_should_disable(caught.value) is True
+
+
+def test_outlook_generic_provider_errors_release_mailbox_for_retry():
+    assert outlook_error_should_disable("Outlook Graph 读取邮件失败: HTTP 401") is False
+    assert outlook_error_should_disable("提交注册密码失败: HTTP 500") is False
+    assert outlook_error_should_disable("AADSTS70000: User account is found to be in service abuse mode") is True
