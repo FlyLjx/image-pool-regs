@@ -27,6 +27,7 @@ MICROSOFT_COMMON_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2
 MICROSOFT_CONSUMERS_TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
 VALID_POOL_STATUSES = {"available", "leased", "used", "failed"}
 MAX_OUTLOOK_OTP_POLLS = 10
+GRAPH_TRANSIENT_STATUSES = {408, 425, 429, 500, 502, 503, 504}
 
 
 class OutlookOtpPollLimitError(RuntimeError):
@@ -739,6 +740,44 @@ class OutlookMailClient:
         self.pool.mark_failed(mailbox, error)
         if self._leased is not None and str(self._leased.get("id") or "") == str(mailbox.get("id") or ""):
             self._leased = None
+
+    def validate_mailbox(self, mailbox: dict[str, Any], *, retries: int = 2) -> list[dict[str, Any]]:
+        """Verify that the mailbox token can read Graph before contacting OpenAI.
+
+        The registration path intentionally performs a Graph-only preflight. IMAP is
+        not a reliable fallback for these OAuth exports and its authentication errors
+        obscure the original Graph 503, so IMAP remains limited to the legacy read
+        path used after Graph has already been rejected.
+        """
+        last_error = ""
+        attempts = max(1, int(retries) + 1)
+        for attempt in range(attempts):
+            try:
+                graph_token = self._access_token(
+                    mailbox,
+                    refresh=attempt > 0,
+                    scope=GRAPH_DEFAULT_SCOPE,
+                )
+                return self._graph_messages(mailbox, graph_token)
+            except RuntimeError as exc:
+                last_error = str(exc)
+                if attempt >= attempts - 1 or not self._is_transient_graph_error(last_error):
+                    break
+                delay = min(8.0, 2.0**attempt)
+                self._status(f"邮箱预检遇到 Graph 临时错误，{delay:g} 秒后重试 ({attempt + 1}/{attempts - 1})")
+                if self.stopped and self.stopped():
+                    raise RuntimeError("任务已停止") from exc
+                time.sleep(delay)
+        raise RuntimeError(f"Outlook 邮箱预检失败: {last_error}")
+
+    @staticmethod
+    def _is_transient_graph_error(error: str) -> bool:
+        text = str(error or "").lower()
+        return any(f"http {status}" in text for status in GRAPH_TRANSIENT_STATUSES) or "backend 'unknown'" in text
+
+    def _status(self, message: str) -> None:
+        if self.on_status:
+            self.on_status(message)
 
     def _access_token(
         self,

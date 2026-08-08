@@ -309,6 +309,7 @@ def test_authorization_route_and_error_payload_are_classified():
 
 def test_existing_outlook_account_uses_otp_login_and_saves_no_unknown_password():
     registrar = ProtocolRegistrar(registrar_settings())
+    events = []
 
     class Mail:
         provider_name = "outlook"
@@ -321,6 +322,10 @@ def test_existing_outlook_account_uses_otp_login_and_saves_no_unknown_password()
         def create_mailbox():
             return {"address": "owner+gpt1@outlook.com"}
 
+        @staticmethod
+        def validate_mailbox(_mailbox):
+            events.append("validate")
+
         def commit_mailbox(self, _mailbox):
             self.committed = True
 
@@ -329,7 +334,7 @@ def test_existing_outlook_account_uses_otp_login_and_saves_no_unknown_password()
 
     mail = Mail()
     registrar._mail_client = lambda *_args, **_kwargs: mail
-    registrar._authorize = lambda *_args, **_kwargs: "https://auth.openai.com/log-in/password"
+    registrar._authorize = lambda *_args, **_kwargs: events.append("authorize") or "https://auth.openai.com/log-in/password"
     registrar._login_existing_with_otp = lambda *_args, **_kwargs: {
         "access_token": "access-token",
         "refresh_token": "refresh-token",
@@ -347,6 +352,7 @@ def test_existing_outlook_account_uses_otp_login_and_saves_no_unknown_password()
     assert account["registration_mode"] == "existing_otp"
     assert mail.committed is True
     assert mail.closed is True
+    assert events == ["validate", "authorize"]
 
 
 def test_existing_account_login_continues_when_old_code_scan_fails():

@@ -724,6 +724,11 @@ class BrowserRegistrar:
                 else:
                     self._log(f"Outlook 分裂号 #{split_index} 就绪：{email}", "success")
             self._log(f"邮箱就绪：{email}", "success")
+            validate_mailbox = getattr(mail, "validate_mailbox", None)
+            if callable(validate_mailbox):
+                self._log("预检邮箱可用性")
+                validate_mailbox(mailbox)
+                self._log("邮箱预检通过，开始访问 OpenAI", "success")
 
             page = self._launch()
             session, registration_mode = self._run_flow(

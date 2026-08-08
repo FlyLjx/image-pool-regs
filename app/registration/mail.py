@@ -206,6 +206,16 @@ class YydsMailClient:
             raise ValueError("登录恢复缺少邮箱地址")
         return {"address": address, "token": "", "account_id": ""}
 
+    def validate_mailbox(self, mailbox: dict[str, str]) -> list[dict[str, Any]]:
+        """Check the temporary mailbox before any registration-site request."""
+        data = self._request(
+            "GET",
+            "/messages",
+            token=mailbox["token"],
+            params={"address": mailbox["address"]},
+        )
+        return self._items(data)
+
     @staticmethod
     def _items(data: Any) -> list[dict[str, Any]]:
         if isinstance(data, list):

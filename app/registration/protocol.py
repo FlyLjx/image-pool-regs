@@ -1150,6 +1150,11 @@ class ProtocolRegistrar:
                 else:
                     self._log(f"Outlook 分裂号 #{split_index} 就绪: {email}", "success")
             self._log(f"邮箱就绪: {email}", "success")
+            validate_mailbox = getattr(mail, "validate_mailbox", None)
+            if callable(validate_mailbox):
+                self._log("预检邮箱可用性")
+                validate_mailbox(mailbox)
+                self._log("邮箱预检通过，开始访问 OpenAI", "success")
             password = random_password()
             first_name = random.choice(("James", "Robert", "John", "Michael", "David", "Mary", "Emma", "Olivia"))
             last_name = random.choice(("Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"))

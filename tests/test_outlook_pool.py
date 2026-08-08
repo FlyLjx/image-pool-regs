@@ -290,6 +290,39 @@ def test_outlook_prefers_graph_when_token_has_graph_and_imap_scopes():
     assert client._messages(mailbox) == [{"id": "graph-mail"}]
 
 
+def test_outlook_mailbox_preflight_uses_graph_only():
+    client = object.__new__(OutlookMailClient)
+    client.on_status = None
+    client.stopped = lambda: False
+    client._access_token = lambda _mailbox, *, refresh=False, scope=None: "graph-token"
+    client._graph_messages = lambda _mailbox, token: [{"id": token}]
+    client._imap_messages = lambda *_args: (_ for _ in ()).throw(AssertionError("preflight must not use IMAP"))
+
+    assert client.validate_mailbox({"address": "owner@outlook.com"}) == [{"id": "graph-token"}]
+
+
+def test_outlook_mailbox_preflight_retries_transient_graph_errors(monkeypatch):
+    client = object.__new__(OutlookMailClient)
+    client.on_status = lambda message: statuses.append(message)
+    client.stopped = lambda: False
+    statuses = []
+    calls = []
+
+    client._access_token = lambda _mailbox, *, refresh=False, scope=None: calls.append(refresh) or "graph-token"
+
+    def graph_messages(_mailbox, _token):
+        if len(calls) == 1:
+            raise RuntimeError("Outlook Graph 读取邮件失败: HTTP 503: backend 'Unknown'")
+        return [{"id": "mail"}]
+
+    client._graph_messages = graph_messages
+    monkeypatch.setattr(outlook_module.time, "sleep", lambda _seconds: None)
+
+    assert client.validate_mailbox({"address": "owner@outlook.com"}) == [{"id": "mail"}]
+    assert calls == [False, True]
+    assert statuses and "Graph 临时错误" in statuses[0]
+
+
 def test_outlook_imap_message_parser_extracts_openai_otp():
     raw = (
         b"From: OpenAI <noreply@example.test>\r\n"
