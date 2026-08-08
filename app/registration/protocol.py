@@ -112,7 +112,19 @@ def outlook_error_is_transient(error: BaseException | str) -> bool:
 def outlook_error_should_disable(error: BaseException | str) -> bool:
     if outlook_error_requires_disable(error):
         return True
-    return False
+    text = str(error or "").lower()
+    return (
+        ("outlook" in text or "邮箱预检" in text or "backend 'unknown'" in text)
+        and ("http 503" in text or "backend 'unknown'" in text)
+    )
+
+
+def outlook_error_should_delete(error: BaseException | str) -> bool:
+    """Delete Outlook pool rows for mailbox-side HTTP 400 responses."""
+    text = str(error or "").lower()
+    if "http 400" not in text:
+        return False
+    return any(marker in text for marker in ("outlook", "邮箱预检", "aadsts"))
 
 
 _TLS_TRANSPORT_MARKERS = (
@@ -1234,7 +1246,17 @@ class ProtocolRegistrar:
             return result
         except Exception as exc:
             fail_mailbox = getattr(mail, "fail_mailbox", None)
-            if mailbox is not None and callable(fail_mailbox) and outlook_error_should_disable(exc):
+            delete_mailbox = getattr(mail, "delete_mailbox", None)
+            if mailbox is not None and getattr(mail, "provider_name", "") == "outlook" and outlook_error_should_delete(exc):
+                if callable(delete_mailbox):
+                    delete_mailbox(mailbox)
+                    self._log(
+                        f"Outlook 邮箱返回 HTTP 400，已从号池删除：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",
+                        "warning",
+                    )
+                elif callable(fail_mailbox):
+                    fail_mailbox(mailbox, str(exc))
+            elif mailbox is not None and callable(fail_mailbox) and outlook_error_should_disable(exc):
                 fail_mailbox(mailbox, str(exc))
                 self._log(
                     f"Outlook 母号已标记失效，后续不再注册：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",

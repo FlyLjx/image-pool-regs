@@ -17,7 +17,7 @@ from playwright.sync_api import BrowserContext, Locator, Page, Playwright, sync_
 
 from app.registration.mail import YydsMailClient
 from app.registration.outlook import OutlookMailClient
-from app.registration.protocol import outlook_error_should_disable, random_password
+from app.registration.protocol import outlook_error_should_delete, outlook_error_should_disable, random_password
 from app.time_utils import iso_now, now as china_now
 
 
@@ -768,7 +768,17 @@ class BrowserRegistrar:
             if page is not None:
                 self._save_debug(page)
             fail_mailbox = getattr(mail, "fail_mailbox", None)
-            if mailbox is not None and callable(fail_mailbox) and outlook_error_should_disable(exc):
+            delete_mailbox = getattr(mail, "delete_mailbox", None)
+            if mailbox is not None and getattr(mail, "provider_name", "") == "outlook" and outlook_error_should_delete(exc):
+                if callable(delete_mailbox):
+                    delete_mailbox(mailbox)
+                    self._log(
+                        f"Outlook 邮箱返回 HTTP 400，已从号池删除：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",
+                        "warning",
+                    )
+                elif callable(fail_mailbox):
+                    fail_mailbox(mailbox, str(exc))
+            elif mailbox is not None and callable(fail_mailbox) and outlook_error_should_disable(exc):
                 fail_mailbox(mailbox, str(exc))
                 self._log(
                     f"Outlook 母号已标记失效，后续不再注册：{mailbox.get('base_address') or mailbox.get('address')}，原因：{str(exc)[:180]}",

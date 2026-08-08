@@ -7,7 +7,7 @@ import pytest
 
 from app.registration import outlook as outlook_module
 from app.registration.outlook import OutlookMailboxPool, OutlookMailClient, OutlookOtpPollLimitError
-from app.registration.protocol import outlook_error_should_disable
+from app.registration.protocol import outlook_error_should_delete, outlook_error_should_disable
 from app.registration.mail import extract_otp
 
 
@@ -171,6 +171,17 @@ def test_outlook_client_marks_uncommitted_mailbox_failed(tmp_path):
     assert snapshot["summary"]["available_slots"] == 0
     assert snapshot["items"][0]["email"] == "owner@outlook.com"
     assert "split failed" in snapshot["items"][0]["last_error"]
+
+
+def test_outlook_client_can_delete_a_mailbox(tmp_path):
+    path = tmp_path / "outlook_mailboxes.json"
+    OutlookMailboxPool(path).import_text("owner@outlook.com----Password123!----client-id----refresh-token")
+    client = OutlookMailClient(path, split_limit=5)
+    mailbox = client.create_mailbox()
+    client.delete_mailbox(mailbox)
+    client.close()
+
+    assert OutlookMailboxPool(path).summary(5)["total"] == 0
 
 
 def test_outlook_pool_repairs_reversed_client_id_and_refresh_token(tmp_path):
@@ -424,5 +435,8 @@ def test_outlook_wait_for_code_switches_mailbox_after_poll_limit(monkeypatch):
 
 def test_outlook_generic_provider_errors_release_mailbox_for_retry():
     assert outlook_error_should_disable("Outlook Graph 读取邮件失败: HTTP 401") is False
+    assert outlook_error_should_disable("Outlook 邮箱预检失败: Outlook Graph 读取邮件失败: HTTP 503") is True
+    assert outlook_error_should_delete("Outlook OAuth 授权失败: HTTP 400: AADSTS70000") is True
+    assert outlook_error_should_delete("提交注册密码失败: HTTP 400") is False
     assert outlook_error_should_disable("提交注册密码失败: HTTP 500") is False
     assert outlook_error_should_disable("AADSTS70000: User account is found to be in service abuse mode") is True

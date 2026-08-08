@@ -741,6 +741,13 @@ class OutlookMailClient:
         if self._leased is not None and str(self._leased.get("id") or "") == str(mailbox.get("id") or ""):
             self._leased = None
 
+    def delete_mailbox(self, mailbox: dict[str, Any]) -> None:
+        mailbox_id = str(mailbox.get("id") or "").strip()
+        if mailbox_id:
+            self.pool.delete([mailbox_id])
+        if self._leased is not None and str(self._leased.get("id") or "") == mailbox_id:
+            self._leased = None
+
     def validate_mailbox(self, mailbox: dict[str, Any], *, retries: int = 2) -> list[dict[str, Any]]:
         """Verify that the mailbox token can read Graph before contacting OpenAI.
 
