@@ -308,12 +308,21 @@ class OutlookMailboxPool:
             source = source["items"]
         elif isinstance(source, dict) and "mailboxes" in source:
             source = source["mailboxes"]
+        elif isinstance(source, dict) and "data" in source:
+            source = source["data"]
         if isinstance(source, str):
             incoming = self.parse_import(source)
         elif isinstance(source, dict):
             incoming = [source]
         elif isinstance(source, list):
-            incoming = [item for item in source if isinstance(item, dict)]
+            # Accept both an array of mailbox objects and an array of the
+            # import-compatible text lines used by several pool providers.
+            incoming = []
+            for item in source:
+                if isinstance(item, dict):
+                    incoming.append(item)
+                elif isinstance(item, str):
+                    incoming.extend(self.parse_import(item))
         else:
             raise ValueError("Outlook 邮箱池导入内容应为文本、对象或 JSON 数组")
         if not incoming:

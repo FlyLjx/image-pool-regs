@@ -210,7 +210,11 @@ class CloudClient:
         self.auth_key = str(settings.get("auth_key") or "").strip()
         self.proxy = str(proxy or "").strip() if bool(settings.get("use_proxy", True)) else ""
         self.timeout = max(10.0, float(settings.get("timeout") or 30))
-        self.retries = _bounded_int(settings.get("request_retries"), 2, 0, 5)
+        # A stale keep-alive connection can be closed by the reverse proxy
+        # between two registrations.  Keep a few bounded retries here so a
+        # transient RemoteDisconnected/connection-aborted error does not turn
+        # a successful account into a sync failure.
+        self.retries = _bounded_int(settings.get("request_retries"), 3, 0, 5)
         try:
             self.retry_backoff = max(0.1, min(5.0, float(settings.get("retry_backoff_seconds") or 0.5)))
         except (TypeError, ValueError):
@@ -249,6 +253,7 @@ class CloudClient:
                     headers={
                         "Authorization": f"Bearer {self.auth_key}",
                         "Content-Type": "application/json",
+                        "Connection": "close",
                     },
                     params=params,
                     json=payload,

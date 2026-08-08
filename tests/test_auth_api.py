@@ -135,6 +135,28 @@ def test_outlook_pool_api_supports_api_key_json_import_and_authenticated_listing
         assert "refresh_token" not in listing["items"][0]
 
 
+def test_outlook_pool_api_accepts_bearer_key_trailing_slash_and_text_array(tmp_path, monkeypatch):
+    monkeypatch.setenv("REG_ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("REG_ADMIN_PASSWORD", "admin123")
+    monkeypatch.setenv("REG_OUTLOOK_IMPORT_API_KEY", "outlook-import-test-key")
+    store = JsonStore(tmp_path)
+    app = create_app(store=store)
+
+    with TestClient(app) as client:
+        imported = client.post(
+            "/api/outlook-pool/import/",
+            headers={"Authorization": "Bearer outlook-import-test-key"},
+            json={
+                "items": [
+                    "pool@example.test----Password123!----client-id----refresh-token",
+                ],
+            },
+        )
+        assert imported.status_code == 200
+        assert imported.json()["added"] == 1
+        assert imported.headers.get("connection") == "close"
+
+
 def test_authenticated_outlook_pool_delete_selected_and_clear_all(tmp_path, monkeypatch):
     monkeypatch.setenv("REG_ADMIN_USERNAME", "admin")
     monkeypatch.setenv("REG_ADMIN_PASSWORD", "admin123")

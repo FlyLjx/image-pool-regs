@@ -344,6 +344,10 @@ def create_app(
         if session is not None:
             return session.username
         supplied = str(request.headers.get("x-api-key") or "").strip()
+        if not supplied:
+            authorization = str(request.headers.get("authorization") or "").strip()
+            if authorization.lower().startswith("bearer "):
+                supplied = authorization[7:].strip()
         if supplied and hmac.compare_digest(supplied, outlook_import_api_key):
             return "api"
         raise HTTPException(status_code=401, detail="Outlook 导入 API Key 不正确")
@@ -519,10 +523,16 @@ def create_app(
         )
 
     @app.post("/api/outlook-pool/import")
+    @app.post("/api/outlook-pool/import/")
     async def import_outlook_pool_api(
         request: Request,
+        response: Response,
         _actor: str = Depends(outlook_import_actor),
     ) -> dict[str, Any]:
+        # Do not leave a long-lived upload connection in a half-closed state
+        # behind the reverse proxy. Callers may safely retry this idempotent
+        # add/update operation by email address.
+        response.headers["Connection"] = "close"
         content_type = str(request.headers.get("content-type") or "").lower()
         try:
             payload = await request.json() if "application/json" in content_type else (await request.body()).decode("utf-8")
