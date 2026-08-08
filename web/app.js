@@ -760,6 +760,7 @@ function updateOutlookPoolSelectionUi() {
     : '删除所选'
   $('#clearOutlookPoolButton').disabled = Number(state.outlookPool?.summary?.total || 0) === 0
   $('#deleteFailedOutlookButton').disabled = Number(state.outlookPool?.summary?.failed || 0) === 0
+  $('#recoverFailedOutlookButton').disabled = Number(state.outlookPool?.summary?.failed || 0) === 0
   $$('[data-outlook-select-id]').forEach((input) => {
     const selected = state.outlookPoolSelected.has(input.dataset.outlookSelectId)
     input.checked = selected
@@ -1051,6 +1052,26 @@ async function deleteFailedOutlookMailboxes() {
     state.outlookPoolSelected.clear()
     await loadOutlookPool(1)
     toast(`异常邮箱已删除：${result.removed || 0} 个`)
+  } finally {
+    setBusy(button, false)
+    updateOutlookPoolSelectionUi()
+  }
+}
+
+async function recoverFailedOutlookMailboxes() {
+  const failed = Number(state.outlookPool?.summary?.failed || 0)
+  if (!failed) return
+  if (!window.confirm(`自动恢复 ${failed} 个异常邮箱？仅恢复可重试状态，微软滥用/安全验证/刷新令牌失效会继续保留异常。`)) return
+  const button = $('#recoverFailedOutlookButton')
+  setBusy(button, true, '恢复中')
+  try {
+    const result = await api('/api/outlook-pool/recover', {
+      method: 'POST',
+      body: JSON.stringify({ mailbox_ids: [] }),
+    })
+    state.outlookPoolSelected.clear()
+    await loadOutlookPool(1)
+    toast(`自动恢复完成：恢复 ${result.recovered || 0}，保留异常 ${result.skipped || 0}`)
   } finally {
     setBusy(button, false)
     updateOutlookPoolSelectionUi()
@@ -1365,6 +1386,7 @@ $('#exportOutlookMailsButton').addEventListener('click', () => { window.location
 $('#deleteSelectedOutlookButton').addEventListener('click', () => deleteSelectedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
 $('#clearOutlookPoolButton').addEventListener('click', () => clearOutlookPool().catch((error) => toast(error.message, 'error')))
 $('#deleteFailedOutlookButton').addEventListener('click', () => deleteFailedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
+$('#recoverFailedOutlookButton').addEventListener('click', () => recoverFailedOutlookMailboxes().catch((error) => toast(error.message, 'error')))
 $('#changePasswordButton').addEventListener('click', () => changePassword().catch((error) => toast(error.message, 'error')))
 $('#exportAccountsButton').addEventListener('click', () => { window.location.href = '/api/accounts/export' })
 $('#accountsPrevPage').addEventListener('click', () => loadAccounts(state.accountPage - 1).catch((error) => toast(error.message, 'error')))

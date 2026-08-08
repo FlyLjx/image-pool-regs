@@ -374,6 +374,60 @@ class OutlookMailboxPool:
             return {**self._summary(remaining), "removed": removed}
 
     @staticmethod
+    def _recovery_is_blocked(error: str) -> bool:
+        lowered = str(error or "").lower()
+        return any(
+            marker in lowered
+            for marker in (
+                "service abuse mode",
+                "collecting proof",
+                "compromised",
+                "invalid_grant",
+                "registration_disallowed",
+                "拒绝创建账号资料",
+            )
+        )
+
+    def recover_failed(self, mailbox_ids: list[str] | None = None) -> dict[str, int]:
+        """Return retryable failed mailboxes to the available pool.
+
+        This is a state-only operation. It does not contact Microsoft or
+        refresh any token; the next registration lease performs the actual
+        low-frequency mailbox check.
+        """
+        targets = {str(value or "").strip() for value in (mailbox_ids or []) if str(value or "").strip()}
+        with self._lock:
+            entries = self._read_unlocked()
+            recovered = 0
+            skipped = 0
+            now = _now()
+            for item in entries:
+                if str(item.get("status") or "") != "failed":
+                    continue
+                if targets and str(item.get("id") or "") not in targets:
+                    continue
+                error = str(item.get("last_error") or "")
+                if self._recovery_is_blocked(error):
+                    skipped += 1
+                    continue
+                item["last_recovery_error"] = error
+                item["last_error"] = ""
+                item["status"] = "available"
+                item["recovered_at"] = now
+                item["recovery_reason"] = "manual_retryable_recovery"
+                item["updated_at"] = now
+                recovered += 1
+            if recovered:
+                self._write_unlocked(entries)
+            summary = self._summary(entries)
+            return {
+                **summary,
+                "recovered": recovered,
+                "skipped": skipped,
+                "remaining_failed": int(summary.get("failed") or 0),
+            }
+
+    @staticmethod
     def _alias(email: str, tag: str) -> str:
         local, domain = str(email).rsplit("@", 1)
         return f"{local}+{tag}@{domain}"

@@ -222,6 +222,10 @@ class DeleteOutlookPoolRequest(BaseModel):
     clear_all: bool = False
 
 
+class RecoverOutlookPoolRequest(BaseModel):
+    mailbox_ids: list[str] = Field(default_factory=list, max_length=1000)
+
+
 class DeleteAccountsRequest(BaseModel):
     account_ids: list[str] = Field(default_factory=list, max_length=200)
 
@@ -576,6 +580,22 @@ def create_app(
             OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).delete_failed,
         )
         runtime_manager.log("warning", f"Outlook 异常邮箱已全部删除：{result['removed']} 个")
+        return {"ok": True, **result}
+
+    @app.post("/api/outlook-pool/recover")
+    async def recover_outlook_pool(
+        body: RecoverOutlookPoolRequest,
+        _user: str = Depends(current_user),
+    ) -> dict[str, Any]:
+        mailbox_ids = list(dict.fromkeys(str(value or "").strip() for value in body.mailbox_ids if str(value or "").strip()))
+        result = await run_in_threadpool(
+            OutlookMailboxPool(runtime_store.path("outlook_mailboxes.json")).recover_failed,
+            mailbox_ids,
+        )
+        runtime_manager.log(
+            "success",
+            f"Outlook 异常邮箱自动恢复：恢复 {result['recovered']}，保留 {result['skipped']}",
+        )
         return {"ok": True, **result}
 
     @app.put("/api/settings/registration/concurrency")

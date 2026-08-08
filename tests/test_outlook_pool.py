@@ -40,6 +40,35 @@ def test_outlook_pool_registers_mother_then_five_split_addresses(tmp_path):
     }
 
 
+def test_outlook_pool_recovers_retryable_failures_but_keeps_hard_failures(tmp_path):
+    pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
+    pool.import_payload([
+        {
+            "email": "retry@example.com",
+            "client_id": "client-retry",
+            "refresh_token": "refresh-retry",
+            "status": "failed",
+            "last_error": "Outlook Graph 读取邮件失败: HTTP 401",
+        },
+        {
+            "email": "blocked@example.com",
+            "client_id": "client-blocked",
+            "refresh_token": "refresh-blocked",
+            "status": "failed",
+            "last_error": "AADSTS70000: User account is found to be in service abuse mode",
+        },
+    ])
+
+    result = pool.recover_failed()
+
+    assert result["recovered"] == 1
+    assert result["skipped"] == 1
+    snapshot = pool.snapshot(5)
+    states = {item["email"]: item["status"] for item in snapshot["items"]}
+    assert states["retry@example.com"] == "available"
+    assert states["blocked@example.com"] == "failed"
+
+
 def test_outlook_pool_exhausts_one_base_mailbox_before_using_the_next(tmp_path):
     pool = OutlookMailboxPool(tmp_path / "outlook_mailboxes.json")
     pool.import_text(
