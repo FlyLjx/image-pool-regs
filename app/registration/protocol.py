@@ -716,6 +716,9 @@ class ProtocolRegistrar:
             data = _json(response)
             error = data.get("error") if isinstance(data.get("error"), dict) else {}
             error_code = str(error.get("code") or data.get("code") or "").strip().lower()
+            error_message = str(error.get("message") or data.get("message") or response.text[:300]).strip()
+            if error_code == "user_already_exists" or "already exists for this email" in f"{error_code} {error_message}".lower():
+                raise ExistingAccountRouteError("邮箱已存在，切换到验证码登录")
             if error_code == "invalid_auth_step" and retry_auth_step:
                 self._log("授权步骤已失效，正在重建 HTTP 会话、Device ID 和 OAuth/PKCE", "warning")
                 self._renew_authorization_session()
@@ -927,6 +930,8 @@ class ProtocolRegistrar:
                 raise RegistrationDisallowedError(
                     "OpenAI 拒绝创建账号资料 (registration_disallowed)：邮箱验证码已通过，当前注册上下文未获通过"
                 )
+            if str(code).strip().lower() == "user_already_exists" or "already exists for this email" in lowered:
+                raise ExistingAccountRouteError("邮箱已存在，切换到验证码登录")
             if any(marker in lowered for marker in ("deactivated", "disabled", "suspended", "terminated", "banned")):
                 raise AccountBannedError(message or code or "账号已被封禁")
             raise RuntimeError(f"创建账号资料失败: HTTP {response.status_code}: {response.text[:300]}")
@@ -1151,31 +1156,47 @@ class ProtocolRegistrar:
             birthdate = f"{random.randint(1996, 2004):04d}-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}"
 
             full_name = f"{first_name} {last_name}"
+
+            def login_existing_account(*, reauthorize: bool) -> dict[str, Any]:
+                nonlocal mailbox_committed
+                if source != "outlook":
+                    raise ExistingAccountRouteError(f"邮箱已存在，OAuth 已进入登录步骤: {email}")
+                if reauthorize:
+                    self._renew_authorization_session()
+                    login_url = self._authorize(email, "login")
+                    if _authorization_route(login_url) == "signup":
+                        raise RuntimeError(f"已有账号切换登录时仍进入注册页: {email}")
+                commit_mailbox = getattr(mail, "commit_mailbox", None)
+                if callable(commit_mailbox) and not mailbox_committed:
+                    commit_mailbox(mailbox)
+                    mailbox_committed = True
+                    self._log("已有 Outlook 地址已登记为占用，不再重复注册", "success")
+                return self._login_existing_with_otp(email, mail, mailbox, full_name, birthdate)
+
             final_url = self._authorize(email)
             route = _authorization_route(final_url)
             registration_mode = "signup"
             account_password = password
             if route == "existing":
-                if source != "outlook":
-                    raise ExistingAccountRouteError(f"邮箱已存在，OAuth 已进入登录步骤: {email}")
                 self._log("Outlook 地址已注册，自动切换到邮箱验证码登录", "warning")
-                commit_mailbox = getattr(mail, "commit_mailbox", None)
-                if callable(commit_mailbox):
-                    commit_mailbox(mailbox)
-                    mailbox_committed = True
-                    self._log("已有 Outlook 地址已登记为占用，不再重复注册", "success")
-                tokens = self._login_existing_with_otp(email, mail, mailbox, full_name, birthdate)
+                tokens = login_existing_account(reauthorize=False)
                 registration_mode = "existing_otp"
                 account_password = ""
             else:
                 self._require_signup_route(final_url, email)
-                self._register_password(email, password)
-                sent_at = self._send_otp()
-                self._log("等待邮箱验证码")
-                code = self._wait_for_mail_code(mail, mailbox, sent_at)
-                self._validate_otp(code)
-                authorization_code = self._create_account(full_name, birthdate)
-                tokens = self._exchange_token(authorization_code)
+                try:
+                    self._register_password(email, password)
+                    sent_at = self._send_otp()
+                    self._log("等待邮箱验证码")
+                    code = self._wait_for_mail_code(mail, mailbox, sent_at)
+                    self._validate_otp(code)
+                    authorization_code = self._create_account(full_name, birthdate)
+                    tokens = self._exchange_token(authorization_code)
+                except ExistingAccountRouteError:
+                    self._log("创建账号发现母号已存在，自动切换到邮箱验证码登录", "warning")
+                    tokens = login_existing_account(reauthorize=True)
+                    registration_mode = "existing_otp"
+                    account_password = ""
             commit_mailbox = getattr(mail, "commit_mailbox", None)
             if callable(commit_mailbox) and not mailbox_committed:
                 commit_mailbox(mailbox)

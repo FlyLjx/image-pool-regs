@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.registration import mail as mail_module
 from app.registration.mail import YydsMailClient, extract_otp
 from app.registration.protocol import (
+    ExistingAccountRouteError,
     ProtocolRegistrar,
     RegistrationDisallowedError,
     _cloudflare_challenge,
@@ -101,5 +102,25 @@ def test_create_account_classifies_registration_disallowed(monkeypatch):
             assert "邮箱验证码已通过" in str(exc)
         else:
             raise AssertionError("expected registration disallowed error")
+    finally:
+        registrar.close()
+
+
+def test_create_account_classifies_existing_account(monkeypatch):
+    registrar = ProtocolRegistrar({"registration": {}, "mail": {}, "sentinel": {}, "flaresolverr": {}})
+    response = FakeResponse(
+        {"error": {"code": "user_already_exists", "message": "An account already exists for this email address."}},
+        status_code=400,
+        text='{"error":{"code":"user_already_exists"}}',
+    )
+    registrar._request = lambda *_args, **_kwargs: response
+    monkeypatch.setattr(registrar, "_add_sentinel_headers", lambda *_args, **_kwargs: None)
+    try:
+        try:
+            registrar._create_account("Test User", "2000-01-01")
+        except ExistingAccountRouteError as exc:
+            assert "验证码登录" in str(exc)
+        else:
+            raise AssertionError("expected existing account route error")
     finally:
         registrar.close()
